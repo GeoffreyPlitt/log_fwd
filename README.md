@@ -1,9 +1,9 @@
 # papertrail_fwd 
 
-[![Go Tests](https://github.com/yourusername/papertrail_fwd/actions/workflows/go.yml/badge.svg)](https://github.com/yourusername/papertrail_fwd/actions/workflows/go.yml)
-[![codecov](https://codecov.io/gh/yourusername/papertrail_fwd/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/papertrail_fwd)
+[![Go Tests](https://github.com/GeoffreyPlitt/papertrail_fwd/actions/workflows/go.yml/badge.svg)](https://github.com/GeoffreyPlitt/papertrail_fwd/actions/workflows/go.yml)
+[![codecov](https://codecov.io/gh/GeoffreyPlitt/papertrail_fwd/branch/main/graph/badge.svg)](https://codecov.io/gh/GeoffreyPlitt/papertrail_fwd)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-blue.svg)](https://golang.org/doc/go1.24)
-[![Go Report Card](https://goreportcard.com/badge/github.com/yourusername/papertrail_fwd)](https://goreportcard.com/report/github.com/yourusername/papertrail_fwd)
+[![Go Report Card](https://goreportcard.com/badge/github.com/GeoffreyPlitt/papertrail_fwd)](https://goreportcard.com/report/github.com/GeoffreyPlitt/papertrail_fwd)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 This program forwards logs to Papertrail (a log management service). It reads data from stdin, formats it as RFC5424 syslog messages, stores them in a circular buffer file, and sends them to Papertrail over TLS. It handles reconnections, buffering during disconnections, and supports command-line arguments for configuration.
@@ -24,13 +24,13 @@ This program forwards logs to Papertrail (a log management service). It reads da
 Requires Go 1.24 or higher.
 
 ```bash
-go install github.com/yourusername/papertrail_fwd@latest
+go install github.com/GeoffreyPlitt/papertrail_fwd@latest
 ```
 
 Or clone and build:
 
 ```bash
-git clone https://github.com/yourusername/papertrail_fwd.git
+git clone https://github.com/GeoffreyPlitt/papertrail_fwd.git
 cd papertrail_fwd
 go build
 ```
