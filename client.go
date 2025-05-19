@@ -209,6 +209,30 @@ func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) (int,
 	defer cancel()
 	
 	debugf("Sending HTTP request to %s", c.url)
+	
+	// Log complete curl equivalent for easier debugging
+	// Escape single quotes in JSON payload for curl command
+	escapedJSON := strings.ReplaceAll(string(jsonData), "'", "'\\''")
+	
+	// Add auth token mask for debugging
+	authPart := "-H 'Authorization: Bearer ****'"
+	if c.authToken != "" {
+		// Show first few chars for debugging
+		tokenPart := "****"
+		if len(c.authToken) >= 4 {
+			tokenPart = c.authToken[:4] + "..." 
+		}
+		authPart = fmt.Sprintf("-H 'Authorization: Bearer %s'", tokenPart)
+	}
+	
+	// Format curl command with all details
+	curlCmd := fmt.Sprintf("curl -v -X POST -H 'Content-Type: application/json' %s -d '%s' %s", 
+		authPart, escapedJSON, c.url)
+	
+	// Always print equivalent curl command to stderr for easier debugging and reproduction
+	fmt.Fprintf(os.Stderr, "\nEquivalent curl command for debugging:\n%s\n\n", curlCmd)
+	debugf("Sending HTTP request to %s", c.url)
+	
 	req, err := http.NewRequestWithContext(reqCtx, "POST", c.url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return 0, fmt.Errorf("error creating request: %w", err)
@@ -218,6 +242,18 @@ func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) (int,
 	req.Header.Set("Content-Type", "application/json")
 	if c.authToken != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.authToken))
+		// Log HTTP method, URL and request size
+		tokenPrefix := ""
+		if len(c.authToken) >= 4 {
+			tokenPrefix = c.authToken[:4]
+		} else {
+			tokenPrefix = c.authToken // Use all if token is shorter than 4 chars
+		}
+		fmt.Fprintf(os.Stderr, "HTTP Request: %s %s (Auth: Bearer %s..., %d bytes)\n", 
+			req.Method, req.URL, tokenPrefix, len(jsonData))
+	} else {
+		fmt.Fprintf(os.Stderr, "HTTP Request: %s %s (NO AUTH TOKEN, %d bytes)\n", 
+			req.Method, req.URL, len(jsonData))
 	}
 	
 	// Log request details in verbose mode, but mask sensitive information
@@ -252,23 +288,49 @@ func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) (int,
 	}
 	defer resp.Body.Close()
 	
-	// Always log response status
+	// Always log response status and headers
 	statusCode := resp.StatusCode
+	
+	// Log detailed response information
+	debugf("Response status: %d %s", statusCode, resp.Status)
+	debugf("Response protocol: %s", resp.Proto)
+	
+	// Log all response headers
+	debugf("Response headers:")
+	for k, v := range resp.Header {
+		debugf("  %s: %s", k, strings.Join(v, ", "))
+	}
+	
+	// Always read the response body for logging
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		debugf("Error reading response body: %v", err)
+	}
+	
+	// Create a new reader with the same content for potential error handling
+	resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+	
+	// For all responses, log the body content
+	if len(bodyBytes) > 0 {
+		// Always print to stderr for easier debugging
+		fmt.Fprintf(os.Stderr, "Response body (%d bytes):\n", len(bodyBytes))
+		if len(bodyBytes) > 1024 {
+			fmt.Fprintf(os.Stderr, "  (first 1024 bytes): %s\n", string(bodyBytes[:1024]))
+			debugf("  [truncated - total length: %d bytes]", len(bodyBytes))
+		} else {
+			fmt.Fprintf(os.Stderr, "  %s\n", string(bodyBytes))
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, "Response body: [empty]\n")
+	}
 	
 	// Check response status
 	if statusCode < 200 || statusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		return statusCode, fmt.Errorf("got non-success status code %d: %s", statusCode, body)
+		return statusCode, fmt.Errorf("got non-success status code %d: %s", statusCode, string(bodyBytes))
 	}
 	
-	// For success responses, try to read response body for debugging
+	// Log summary for successful responses
 	debugf("HTTP request succeeded with status %d", statusCode)
-	if isVerbose {
-		body, _ := io.ReadAll(resp.Body)
-		if len(body) > 0 {
-			debugf("Response body: %s", body)
-		}
-	}
 	
 	return statusCode, nil
 }
