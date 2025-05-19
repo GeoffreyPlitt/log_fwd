@@ -69,10 +69,13 @@ func ProcessInput(ctx context.Context, buffer *CircularBuffer, hostname, program
 		
 		// Set up connection problem detection
 		connectionRetries := 0
-		maxConnectionRetries := 30 // About 3 seconds of retrying
+		maxConnectionRetries := 60 // About 6 seconds of retrying
 		lastSize := buffer.GetSize()
 		noProgressCount := 0
-		maxNoProgress := 50 // About 5 seconds with no progress
+		maxNoProgress := 100 // About 10 seconds with no progress
+		
+		// Log initial buffer size for debugging
+		fmt.Fprintf(os.Stderr, "Starting buffer flush with %d bytes of data\n", lastSize)
 		
 		for buffer.HasData() {
 			// Check if we should exit
@@ -86,11 +89,19 @@ func ProcessInput(ctx context.Context, buffer *CircularBuffer, hostname, program
 				
 				if currentSize == lastSize {
 					noProgressCount++
-					debugf("No progress in buffer flushing for %d checks", noProgressCount)
+					
+					// Log every 10 checks (about 1 second) 
+					if noProgressCount % 10 == 0 {
+						fmt.Fprintf(os.Stderr, "No progress in buffer flushing for %.1f seconds (%d bytes remaining)\n", 
+							float64(noProgressCount)/10.0, currentSize)
+						debugf("No progress in buffer flushing for %d checks", noProgressCount)
+					}
 					
 					if noProgressCount >= maxNoProgress {
 						// Signal possible connection issue
 						connectionRetries++
+						fmt.Fprintf(os.Stderr, "Possible connection issue detected (retry %d/%d)\n", 
+							connectionRetries, maxConnectionRetries)
 						debugf("Possible connection issue detected (retry %d/%d)", connectionRetries, maxConnectionRetries)
 						
 						if connectionRetries >= maxConnectionRetries {
@@ -101,6 +112,9 @@ func ProcessInput(ctx context.Context, buffer *CircularBuffer, hostname, program
 					}
 				} else {
 					// Reset counters if we're making progress
+					if noProgressCount > 0 {
+						fmt.Fprintf(os.Stderr, "Buffer flush resumed: %d bytes remaining\n", currentSize)
+					}
 					noProgressCount = 0
 					connectionRetries = 0
 					lastSize = currentSize
@@ -116,6 +130,12 @@ func ProcessInput(ctx context.Context, buffer *CircularBuffer, hostname, program
 				}
 			}
 		}
+		
+		// Extra delay to ensure all HTTP responses are received and logged
+		// This gives time for the final HTTP response handling to complete
+		fmt.Fprintf(os.Stderr, "Buffer is empty, waiting for final responses to be logged...\n")
+		time.Sleep(1 * time.Second)
+		
 		fmt.Fprintf(os.Stderr, "Buffer flushed successfully.\n")
 		debugf("Buffer flush completed")
 	}

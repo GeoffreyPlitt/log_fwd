@@ -316,9 +316,12 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 					successCount += int64(batchSize)
 					batchCount++
 					
-					// Log success
+					// Log success with detailed information
+					fmt.Fprintf(os.Stderr, "------------------------------------------------------\n")
 					fmt.Fprintf(os.Stderr, "Successfully sent batch of %d log entries (HTTP %d)\n", 
 						batchSize, statusCode)
+					fmt.Fprintf(os.Stderr, "All messages delivered successfully to %s\n", c.url)
+					fmt.Fprintf(os.Stderr, "------------------------------------------------------\n")
 					debugf("Successfully sent batch with status code: %d", statusCode)
 					
 					// Remove the processed messages from the queue
@@ -406,8 +409,11 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 				// Record success
 				successCount++
 				
-				// Log success to stderr with status code
+				// Log success to stderr with status code and detailed information
+				fmt.Fprintf(os.Stderr, "------------------------------------------------------\n")
 				fmt.Fprintf(os.Stderr, "Successfully sent log entry (HTTP %d)\n", statusCode)
+				fmt.Fprintf(os.Stderr, "Message delivered successfully to %s\n", c.url)
+				fmt.Fprintf(os.Stderr, "------------------------------------------------------\n")
 				debugf("Successfully sent log entry with status code: %d", statusCode)
 				
 				// Remove the processed message from the queue
@@ -502,14 +508,23 @@ func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) (int,
 	// Always log response status and headers
 	statusCode := resp.StatusCode
 	
-	// Log detailed response information
+	// Log detailed response information - always log to stderr for visibility
+	fmt.Fprintf(os.Stderr, "Response received: %d %s\n", statusCode, resp.Status)
 	debugf("Response status: %d %s", statusCode, resp.Status)
 	debugf("Response protocol: %s", resp.Proto)
 	
 	// Log all response headers
 	debugf("Response headers:")
+	// Print a summary to stderr as well
+	headerSummary := ""
 	for k, v := range resp.Header {
 		debugf("  %s: %s", k, strings.Join(v, ", "))
+		if k == "Content-Type" || k == "Content-Length" || k == "Date" {
+			headerSummary += fmt.Sprintf("%s: %s ", k, strings.Join(v, ", "))
+		}
+	}
+	if headerSummary != "" {
+		fmt.Fprintf(os.Stderr, "Response headers: %s\n", headerSummary)
 	}
 	
 	// Always read the response body for logging
