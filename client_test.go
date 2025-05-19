@@ -19,6 +19,7 @@ type MockTLSDialer struct {
 	MockConn  *MockConn
 	DialError error
 	DialCalls int
+	mu        sync.Mutex // Protects DialCalls
 }
 
 // MockConn implements net.Conn interface for testing
@@ -81,9 +82,13 @@ func (c *MockTLSConn) Handshake() error {
 
 // Dial implements the TLSDialer interface
 func (d *MockTLSDialer) Dial(ctx context.Context) (*tls.Conn, error) {
+	d.mu.Lock()
 	d.DialCalls++
-	if d.DialError != nil {
-		return nil, d.DialError
+	dialError := d.DialError
+	d.mu.Unlock()
+	
+	if dialError != nil {
+		return nil, dialError
 	}
 	
 	// Use our mock connection
@@ -233,28 +238,56 @@ func TestDialerUsage(t *testing.T) {
 	// Now attempt to connect with retry, but we'll use a cancel context to prevent blocking
 	ctx, cancel := context.WithCancel(context.Background())
 	
-	// Start the attempt in a goroutine
+	// Use a WaitGroup to ensure the goroutine completes before we check results
+	var wg sync.WaitGroup
+	wg.Add(1)
+	
+	// Create a mutex to protect access to shared variables
+	var mu sync.Mutex
 	var errResult error
+	
+	// Start the attempt in a goroutine
 	go func() {
-		_, errResult = client.connectWithRetry(ctx)
+		defer wg.Done()
+		var conn *tls.Conn
+		conn, err := client.connectWithRetry(ctx)
+		
+		mu.Lock()
+		errResult = err
+		mu.Unlock()
+		
+		// Close connection if it was somehow successful
+		if conn != nil {
+			conn.Close()
+		}
 	}()
 	
-	// Allow some time for the first attempt
-	time.Sleep(10 * time.Millisecond)
+	// Allow some time for the first attempt - increased to ensure dialer is called
+	time.Sleep(50 * time.Millisecond)
 	
-	// Verify the dialer was called
-	if mockDialer.DialCalls == 0 {
+	// Get dial call count with proper synchronization
+	mockDialer.mu.Lock()
+	dialCalls := mockDialer.DialCalls
+	mockDialer.mu.Unlock()
+	
+	// Verify the dialer was called at least once
+	if dialCalls == 0 {
 		t.Error("Dialer was not called")
 	}
 	
 	// Cancel the context to end the test
 	cancel()
 	
-	// Wait a bit to ensure goroutine finishes
-	time.Sleep(10 * time.Millisecond)
+	// Wait for goroutine to complete rather than sleeping
+	wg.Wait()
+	
+	// Check result with mutex protection
+	mu.Lock()
+	er := errResult
+	mu.Unlock()
 	
 	// Should have received an error (either our test error or context canceled)
-	if errResult == nil {
+	if er == nil {
 		t.Error("Expected an error from connectWithRetry")
 	}
 }

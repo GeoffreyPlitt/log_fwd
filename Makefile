@@ -2,7 +2,7 @@
 
 # Build variables
 BINARY_NAME=papertrail_fwd
-VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "1.0.0")
 BUILD_TIME=$(shell date +%FT%T%z)
 LDFLAGS=-ldflags "-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}"
 
