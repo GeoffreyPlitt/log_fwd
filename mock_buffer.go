@@ -66,6 +66,14 @@ func (m *MockBuffer) HasData() bool {
 	return m.buffer.Len() > 0
 }
 
+// GetSize returns the current size of data in the buffer
+func (m *MockBuffer) GetSize() int64 {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	
+	return int64(m.buffer.Len())
+}
+
 // Close closes the buffer
 func (m *MockBuffer) Close() error {
 	m.mutex.Lock()

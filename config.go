@@ -27,6 +27,7 @@ type Config struct {
 	BufferPath  string
 	MaxSize     int64
 	ShowVersion bool
+	Verbose     bool
 }
 
 // Validate checks if the config has all required fields
@@ -61,10 +62,12 @@ func ParseFlags() *Config {
 	flag.StringVar(&config.BufferPath, "buffer", "papertrail_buffer.log", "Path to buffer file")
 	maxSize := flag.Int64("maxsize", DefaultMaxSize, "Maximum buffer size in bytes")
 	showVersion := flag.Bool("version", false, "Show version information and exit")
+	verbose := flag.Bool("v", false, "Enable verbose debug logging")
 	flag.Parse()
 	
 	config.MaxSize = *maxSize
 	config.ShowVersion = *showVersion
+	config.Verbose = *verbose
 	
 	// If version flag is set, we'll handle this separately in main() so skip validation
 	if !config.ShowVersion {

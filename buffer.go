@@ -21,30 +21,41 @@ type CircularBuffer struct {
 
 // NewBuffer creates a new circular buffer with dynamic growth
 func NewBuffer(path string, maxSize int64) (*CircularBuffer, error) {
+	debugf("Creating buffer with path: %s, maxSize: %d bytes", path, maxSize)
+	
 	// Create buffer directory if it doesn't exist
 	dir := filepath.Dir(path)
+	debugf("Ensuring buffer directory exists: %s", dir)
 	if err := os.MkdirAll(dir, 0755); err != nil {
+		debugf("Failed to create buffer directory: %v", err)
 		return nil, fmt.Errorf("failed to create buffer directory: %w", err)
 	}
 
 	// Open or create the buffer file
+	debugf("Opening buffer file: %s", path)
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
+		debugf("Failed to open buffer file: %v", err)
 		return nil, fmt.Errorf("failed to open buffer file: %w", err)
 	}
+	debugf("Buffer file opened successfully")
 
 	// Get current file size
 	info, err := file.Stat()
 	if err != nil {
+		debugf("Failed to stat buffer file: %v", err)
 		file.Close()
 		return nil, fmt.Errorf("failed to stat buffer file: %w", err)
 	}
 
 	fileSize := info.Size()
+	debugf("Initial buffer file size: %d bytes", fileSize)
 	
 	// Initialize with minimal size if empty
 	if fileSize == 0 {
+		debugf("Buffer file is empty, initializing with size: %d bytes", InitialBufferSize)
 		if err := file.Truncate(InitialBufferSize); err != nil {
+			debugf("Failed to initialize buffer file: %v", err)
 			file.Close()
 			return nil, fmt.Errorf("failed to initialize buffer file: %w", err)
 		}
@@ -174,9 +185,23 @@ func (cb *CircularBuffer) HasData() bool {
 	return cb.size > 0
 }
 
+// GetSize returns the current size of data in the buffer
+func (cb *CircularBuffer) GetSize() int64 {
+	cb.mutex.Lock()
+	defer cb.mutex.Unlock()
+	return cb.size
+}
+
 // Close closes the buffer file
 func (cb *CircularBuffer) Close() error {
 	cb.mutex.Lock()
 	defer cb.mutex.Unlock()
-	return cb.file.Close()
+	debugf("Closing buffer file")
+	err := cb.file.Close()
+	if err != nil {
+		debugf("Error closing buffer file: %v", err)
+	} else {
+		debugf("Buffer file closed successfully")
+	}
+	return err
 }

@@ -14,7 +14,15 @@ import (
 var (
 	Version   = "1.0.0"
 	BuildTime = "unknown"
+	isVerbose = false
 )
+
+// debugf prints debug messages when verbose mode is enabled
+func debugf(format string, args ...interface{}) {
+	if isVerbose {
+		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
+	}
+}
 
 func main() {
 	// Set up panic recovery
@@ -27,11 +35,18 @@ func main() {
 
 	// Parse command line arguments
 	cfg := ParseFlags()
-
+	
+	// Set global verbose flag
+	isVerbose = cfg.Verbose
+	
 	// Check if version flag was specified
 	if cfg.ShowVersion {
 		fmt.Printf("papertrail_fwd version %s (built at %s)\n", Version, BuildTime)
 		return
+	}
+	
+	if isVerbose {
+		debugf("Verbose logging enabled")
 	}
 
 	// Additional validation is already done in ParseFlags, but this demonstrates
