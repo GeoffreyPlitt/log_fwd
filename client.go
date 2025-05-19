@@ -25,9 +25,10 @@ type HTTPClient struct {
 	insecureSSL  bool
 }
 
-// Timestamp format constants
+// Constants
 const (
 	TimestampFormat = "2006-01-02 15:04:05 UTC" // Format for timestamp sent to log service
+	MaxBatchLines   = 100                       // Maximum number of lines to process in one batch
 )
 
 // LogEntry represents a JSON log entry for the HTTP API
@@ -181,8 +182,20 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 		
 		// If the queue is empty, check for more data in the buffer
 		if len(requestQueue) == 0 && buffer.HasData() {
-			debugf("Reading more logs from buffer (size: %d bytes)", buffer.GetSize())
-			data, err := buffer.Read(ReadChunkSize)
+			// Calculate how much to read based on the buffer size
+			// Try to read enough to get MaxBatchLines lines in one go
+			// Estimate 100 bytes per line on average as a heuristic
+			bufferSize := buffer.GetSize()
+			readSize := int64(MaxBatchLines * 100) // Estimate to read enough for MaxBatchLines
+			if readSize > bufferSize {
+				readSize = bufferSize // Don't try to read more than what's available
+			}
+			if readSize < ReadChunkSize {
+				readSize = ReadChunkSize // Read at least ReadChunkSize
+			}
+			
+			debugf("Reading more logs from buffer (size: %d bytes, reading up to %d bytes)", bufferSize, readSize)
+			data, err := buffer.Read(readSize)
 			if err != nil && err != io.EOF {
 				fmt.Fprintf(os.Stderr, "Error reading from buffer: %v\n", err)
 				debugf("Error reading from buffer: %v", err)
@@ -202,8 +215,10 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 			if len(data) > 0 {
 				debugf("Processing %d bytes of log data", len(data))
 				
-				// Split data into lines and queue them for processing
+				// Split data into lines and queue them for processing (up to MaxBatchLines)
 				lines := strings.Split(string(data), "\n")
+				linesAdded := 0
+				
 				for _, line := range lines {
 					if line != "" {
 						requestQueue = append(requestQueue, queuedMessage{
@@ -211,10 +226,17 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 							retries: 0,
 							lastAttempt: time.Time{}, // Zero time (never attempted)
 						})
+						linesAdded++
+						
+						// Cap the number of lines we add in one go
+						if linesAdded >= MaxBatchLines {
+							debugf("Reached max lines limit (%d), will process remaining lines in next batch", MaxBatchLines)
+							break
+						}
 					}
 				}
 				
-				debugf("Queued %d messages for processing", len(requestQueue))
+				debugf("Queued %d messages for processing", linesAdded)
 			}
 		}
 		
@@ -238,10 +260,14 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 		// Process messages from the queue (as a batch if enabled)
 		if len(requestQueue) > 0 {
 			// Determine if we should process in batch or single mode
-			if c.config.EnableBatching && len(requestQueue) >= c.config.BatchSize {
-				// Batch processing
+			if c.config.EnableBatching && len(requestQueue) >= 1 {
+				// Batch processing - use greedier approach with larger batches 
 				processBatch := true
-				batchSize := c.config.BatchSize
+				// Use either MaxBatchLines or the configured batch size, whichever is larger
+				batchSize := MaxBatchLines
+				if c.config.BatchSize > MaxBatchLines {
+					batchSize = c.config.BatchSize
+				}
 				if batchSize > len(requestQueue) {
 					batchSize = len(requestQueue)
 				}
