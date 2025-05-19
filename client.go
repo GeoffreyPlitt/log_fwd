@@ -131,7 +131,7 @@ func (c *PapertrailClient) SendLogs(ctx context.Context, buffer Buffer, signal c
 		if len(data) > 0 {
 			if _, err := conn.Write(data); err != nil {
 				log.Printf("Failed to send logs: %v", err)
-				conn.Close()
+				_ = conn.Close() // Ignore close error, connection already failed
 				conn = nil
 				continue
 			}

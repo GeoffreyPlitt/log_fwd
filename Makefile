@@ -33,7 +33,6 @@ cover:
 # Run code linting
 lint:
 	go vet ./...
-	@command -v golangci-lint >/dev/null && golangci-lint run || echo "golangci-lint not installed, skipping advanced linting"
 
 # Clean build artifacts
 clean:
@@ -49,12 +48,12 @@ run:
 # Show help
 help:
 	@echo "Available targets:"
-	@echo "  build      - Build the application"
-	@echo "  install    - Install the application"
-	@echo "  test       - Run tests"
-	@echo "  test-race  - Run tests with race detection"
-	@echo "  cover      - Generate and view test coverage"
-	@echo "  lint       - Run code linting"
-	@echo "  clean      - Clean build artifacts"
-	@echo "  run        - Run the application"
-	@echo "  help       - Show this help"
+	@echo "  build        - Build the application"
+	@echo "  install      - Install the application"
+	@echo "  test         - Run tests"
+	@echo "  test-race    - Run tests with race detection"
+	@echo "  cover        - Generate and view test coverage"
+	@echo "  lint         - Run code linting"
+		@echo "  clean        - Clean build artifacts"
+	@echo "  run          - Run the application"
+	@echo "  help         - Show this help"

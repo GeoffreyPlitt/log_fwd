@@ -133,17 +133,25 @@ This project uses GitHub Actions for continuous integration:
 
 ### Code Linting
 
+This project uses [golangci-lint](https://golangci-lint.run/) for advanced linting to maintain code quality. You can install it with:
+
+```bash
+make install-lint
+```
+
 Run the linter:
 
 ```bash
 make lint
 ```
 
-Or manually:
+This will run both `go vet` and `golangci-lint` with our project configuration.
 
-```bash
-go vet ./...
-```
+The configuration in `.golangci.yml` enables multiple linters:
+- Code style checkers (gofmt, goimports, whitespace)
+- Bug finders (errcheck, staticcheck, gosec)
+- Complexity checkers (gocyclo, gocritic)
+- And many more
 
 ## License
 
