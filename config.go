@@ -17,7 +17,6 @@ const (
 	DefaultMaxRetries = 3         // Default number of retries
 	DefaultHTTPTimeout = 30 * time.Second // Default HTTP client timeout
 	DefaultRequestTimeout = 10 * time.Second // Default per-request timeout
-	DefaultPollingInterval = 1 * time.Second // Default buffer polling interval when idle
 )
 
 // ErrInvalidConfig is returned when required configuration is missing
@@ -39,7 +38,6 @@ type Config struct {
 	MaxRetries      int           // Maximum number of retries for failed requests
 	HTTPTimeout     time.Duration // Overall HTTP client timeout
 	RequestTimeout  time.Duration // Per-request timeout
-	PollingInterval time.Duration // Interval for polling the buffer when idle
 	EnableBatching  bool          // Whether to enable log batching
 	CompressLogs    bool          // Whether to compress logs (gzip) before sending
 }
@@ -83,7 +81,6 @@ func ParseFlags() *Config {
 	maxRetries := flag.Int("retries", DefaultMaxRetries, "Maximum number of retries for failed requests")
 	httpTimeout := flag.Duration("timeout", DefaultHTTPTimeout, "Overall HTTP client timeout")
 	requestTimeout := flag.Duration("req-timeout", DefaultRequestTimeout, "Per-request timeout")
-	pollingInterval := flag.Duration("polling-interval", DefaultPollingInterval, "Interval for polling buffer when idle")
 	enableBatching := flag.Bool("enable-batch", true, "Enable log batching")
 	compressLogs := flag.Bool("compress", false, "Compress logs using gzip before sending")
 	showVersion := flag.Bool("version", false, "Show version information and exit")
@@ -96,7 +93,6 @@ func ParseFlags() *Config {
 	config.MaxRetries = *maxRetries
 	config.HTTPTimeout = *httpTimeout
 	config.RequestTimeout = *requestTimeout
-	config.PollingInterval = *pollingInterval
 	config.EnableBatching = *enableBatching
 	config.CompressLogs = *compressLogs
 	config.ShowVersion = *showVersion

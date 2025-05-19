@@ -74,7 +74,6 @@ some_program | ./papertrail_fwd \
 | `-retries` | Maximum number of retries for failed requests | 3 |
 | `-timeout` | Overall HTTP client timeout | 30s |
 | `-req-timeout` | Per-request timeout | 10s |
-| `-polling-interval` | Interval for polling buffer when idle | 1s |
 | `-compress` | Compress logs using gzip before sending | false |
 | `-v` | Enable verbose debug logging | false |
 
@@ -106,7 +105,6 @@ tail -f /var/log/high-volume.log | ./papertrail_fwd \
   -token YOUR_API_TOKEN \
   -batch 50 \
   -compress \
-  -polling-interval 500ms \
   -buffer "/var/log/high_volume_buffer.log" \
   -maxsize 1073741824  # 1GB buffer
 ```

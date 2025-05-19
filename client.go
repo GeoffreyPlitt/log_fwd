@@ -225,9 +225,9 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 			case <-signal:
 				debugf("Received signal that new logs are available")
 				// Immediately continue to process new logs
-			case <-time.After(c.config.PollingInterval):
-				debugf("Regular polling for new logs (interval: %v)", c.config.PollingInterval)
-				// Use configured polling interval
+			case <-time.After(1 * time.Second):
+				debugf("Regular polling for new logs")
+				// Short fallback polling interval for responsiveness
 			case <-ctx.Done():
 				debugf("Context canceled while waiting for new logs")
 				return
