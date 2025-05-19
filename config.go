@@ -28,6 +28,8 @@ type Config struct {
 	MaxSize     int64
 	ShowVersion bool
 	Verbose     bool
+	AuthToken   string
+	InsecureSSL bool
 }
 
 // Validate checks if the config has all required fields
@@ -38,6 +40,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Port <= 0 {
 		return fmt.Errorf("%w: valid port is required", ErrInvalidConfig)
+	}
+	if c.AuthToken == "" {
+		return fmt.Errorf("%w: authorization token is required", ErrInvalidConfig)
 	}
 	return nil
 }
@@ -55,19 +60,22 @@ var CurrentLogFatal LogFatalFunc = DefaultLogFatal
 func ParseFlags() *Config {
 	config := &Config{}
 	
-	flag.StringVar(&config.CertFile, "cert", "", "Path to Papertrail certificate bundle (optional, uses system certs if not provided)")
-	flag.StringVar(&config.Host, "host", "", "Papertrail host")
-	flag.IntVar(&config.Port, "port", 0, "Papertrail port")
+	flag.StringVar(&config.CertFile, "cert", "", "Path to certificate bundle (optional, uses system certs if not provided)")
+	flag.StringVar(&config.Host, "host", "", "Log destination host (e.g., s1314159.eu-nbg-2.betterstackdata.com)")
+	flag.IntVar(&config.Port, "port", 443, "Port for log destination (defaults to 443 for HTTPS)")
 	flag.StringVar(&config.ProgramName, "program", "custom-logger", "Program name for log identification")
 	flag.StringVar(&config.BufferPath, "buffer", "papertrail_buffer.log", "Path to buffer file")
+	flag.StringVar(&config.AuthToken, "token", "", "Authorization token (required for HTTP API)")
 	maxSize := flag.Int64("maxsize", DefaultMaxSize, "Maximum buffer size in bytes")
 	showVersion := flag.Bool("version", false, "Show version information and exit")
 	verbose := flag.Bool("v", false, "Enable verbose debug logging")
+	insecureSSL := flag.Bool("k", false, "Allow insecure SSL connections (skip certificate validation)")
 	flag.Parse()
 	
 	config.MaxSize = *maxSize
 	config.ShowVersion = *showVersion
 	config.Verbose = *verbose
+	config.InsecureSSL = *insecureSSL
 	
 	// If version flag is set, we'll handle this separately in main() so skip validation
 	if !config.ShowVersion {

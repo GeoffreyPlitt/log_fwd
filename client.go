@@ -1,91 +1,77 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
-// TLSDialer defines an interface for establishing TLS connections
-type TLSDialer interface {
-	Dial(ctx context.Context) (*tls.Conn, error)
+// HTTPClient handles sending logs to the HTTP API
+type HTTPClient struct {
+	config       *Config
+	client       *http.Client
+	url          string
+	authToken    string
+	insecureSSL  bool
 }
 
-// StandardTLSDialer implements the TLSDialer interface with standard TLS dialing
-type StandardTLSDialer struct {
-	tlsConfig *tls.Config
-	addr      string
+// LogEntry represents a JSON log entry for the HTTP API
+type LogEntry struct {
+	Timestamp string `json:"dt"`
+	Message   string `json:"message"`
 }
 
-// Dial establishes a TLS connection
-func (d *StandardTLSDialer) Dial(ctx context.Context) (*tls.Conn, error) {
-	var dialer tls.Dialer
-	dialer.Config = d.tlsConfig
-	
-	conn, err := dialer.DialContext(ctx, "tcp", d.addr)
-	if err != nil {
-		return nil, err
-	}
-
-	return conn.(*tls.Conn), nil
-}
-
-// PapertrailClient handles sending logs to Papertrail
-type PapertrailClient struct {
-	config    *Config
-	dialer    TLSDialer
-	addr      string
-}
-
-// NewClient creates a new Papertrail client
-func NewClient(cfg *Config) (*PapertrailClient, error) {
-	// Load TLS config if cert file provided, otherwise use system certs
-	var tlsConfig *tls.Config
-	var err error
+// NewClient creates a new HTTP API client
+func NewClient(cfg *Config) (*HTTPClient, error) {
+	// Create HTTP transport with proper TLS config
+	var transport *http.Transport
 	
 	if cfg.CertFile != "" {
 		debugf("Using custom certificate: %s", cfg.CertFile)
-		tlsConfig, err = loadTLSConfig(cfg.CertFile)
+		tlsConfig, err := loadTLSConfig(cfg.CertFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load TLS config: %w", err)
 		}
+		transport = &http.Transport{TLSClientConfig: tlsConfig}
 	} else {
 		// Use system root certificates
 		debugf("Using system root certificates")
-		tlsConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
+		transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				InsecureSkipVerify: cfg.InsecureSSL,
+			},
 		}
 	}
 
-	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-	debugf("Configured Papertrail endpoint: %s", addr)
-
-	// Create standard dialer
-	dialer := &StandardTLSDialer{
-		tlsConfig: tlsConfig,
-		addr:      addr,
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
 	}
 
-	return &PapertrailClient{
-		config: cfg,
-		dialer: dialer,
-		addr:   addr,
-	}, nil
-}
-
-// NewClientWithDialer creates a new Papertrail client with a custom dialer (useful for testing)
-func NewClientWithDialer(cfg *Config, dialer TLSDialer) *PapertrailClient {
-	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	// Build URL from host and port
+	url := fmt.Sprintf("https://%s", cfg.Host)
+	if cfg.Port != 443 {
+		url = fmt.Sprintf("https://%s:%d", cfg.Host, cfg.Port)
+	}
 	
-	return &PapertrailClient{
-		config: cfg,
-		dialer: dialer,
-		addr:   addr,
-	}
+	debugf("Configured HTTP API endpoint: %s", url)
+
+	return &HTTPClient{
+		config:      cfg,
+		client:      client,
+		url:         url,
+		authToken:   cfg.AuthToken,
+		insecureSSL: cfg.InsecureSSL,
+	}, nil
 }
 
 // Buffer defines the interface for buffer types used with SendLogs
@@ -95,32 +81,20 @@ type Buffer interface {
 	GetSize() int64
 }
 
-// SendLogs reads from buffer and sends to Papertrail
-func (c *PapertrailClient) SendLogs(ctx context.Context, buffer Buffer, signal chan struct{}) {
-	var conn *tls.Conn
-	
-	debugf("SendLogs started for endpoint %s", c.addr)
+// SendLogs reads from buffer and sends to the HTTP API
+func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan struct{}) {
+	debugf("SendLogs started for HTTP API endpoint %s", c.url)
 	
 	for {
 		// Check if we should exit
 		select {
 		case <-ctx.Done():
 			debugf("Context canceled, shutting down SendLogs")
-			if conn != nil {
-				debugf("Closing connection on shutdown")
-				// Try to close connection gracefully on exit
-				if err := conn.Close(); err != nil {
-					fmt.Fprintf(os.Stderr, "Error closing connection on shutdown: %v\n", err)
-					debugf("Failed to close connection gracefully: %v", err)
-				} else {
-					debugf("Connection closed gracefully")
-				}
-			}
 			return
 		default:
 		}
 		
-		// Check for data and connection
+		// Check for data in buffer
 		if !buffer.HasData() {
 			debugf("No data in buffer, waiting for new logs")
 			// Wait for new logs signal or timeout
@@ -133,37 +107,12 @@ func (c *PapertrailClient) SendLogs(ctx context.Context, buffer Buffer, signal c
 				// Regular poll
 			case <-ctx.Done():
 				debugf("Context canceled while waiting for new logs")
-				if conn != nil {
-					debugf("Closing connection on shutdown")
-					if err := conn.Close(); err != nil {
-						fmt.Fprintf(os.Stderr, "Error closing connection on shutdown: %v\n", err)
-						debugf("Failed to close connection gracefully: %v", err)
-					} else {
-						debugf("Connection closed gracefully")
-					}
-				}
 				return
 			}
 			continue
 		}
 
-		// Ensure connection is established
-		if conn == nil {
-			debugf("No active connection, attempting to connect")
-			var err error
-			conn, err = c.connectWithRetry(ctx)
-			if err != nil {
-				// Failed to connect even after retries
-				fmt.Fprintf(os.Stderr, "Connection failed after retries: %v\n", err)
-				debugf("Connection failed even after retries: %v", err)
-				debugf("Waiting %v before trying again", ReconnectTimeout)
-				time.Sleep(ReconnectTimeout)
-				continue
-			}
-			debugf("Connection established successfully")
-		}
-
-		// Read and send logs
+		// Read log data from buffer
 		debugf("Reading logs from buffer")
 		data, err := buffer.Read(ReadChunkSize)
 		if err != nil && err != io.EOF {
@@ -174,24 +123,48 @@ func (c *PapertrailClient) SendLogs(ctx context.Context, buffer Buffer, signal c
 		}
 
 		if len(data) > 0 {
-			debugf("Sending %d bytes of log data", len(data))
-			// Log the actual content being sent
-			logData(data)
-			if _, err := conn.Write(data); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to send logs: %v\n", err)
-				debugf("Failed to send logs: %v", err)
-				// Try to close the connection gracefully, log if error
-				debugf("Closing failed connection")
-				if closeErr := conn.Close(); closeErr != nil {
-					fmt.Fprintf(os.Stderr, "Error closing connection: %v\n", closeErr)
-					debugf("Error closing failed connection: %v", closeErr)
-				} else {
-					debugf("Failed connection closed successfully")
+			debugf("Processing %d bytes of log data", len(data))
+			
+			// Parse the syslog format and convert to JSON for HTTP API
+			// Assuming each line is a separate log entry
+			lines := strings.Split(string(data), "\n")
+			for _, line := range lines {
+				if line == "" {
+					continue
 				}
-				conn = nil
-				continue
+				
+				// Log the actual content being sent
+				logData([]byte(line))
+				
+				// Extract the actual message from the syslog format
+				// Example: <13>1 2023-04-14T15:04:05Z hostname program - - - Actual log message
+				message := extractMessage(line)
+				
+				// Create JSON payload
+				timestamp := time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
+				logEntry := LogEntry{
+					Timestamp: timestamp,
+					Message:   message,
+				}
+				
+				jsonData, err := json.Marshal(logEntry)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error creating JSON payload: %v\n", err)
+					debugf("Error creating JSON payload: %v", err)
+					continue
+				}
+				
+				// Send HTTP request
+				if err := c.sendHTTPRequest(ctx, jsonData); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to send log: %v\n", err)
+					debugf("Failed to send log: %v", err)
+					// Wait a bit before retrying
+					time.Sleep(1 * time.Second)
+					continue
+				}
+				
+				debugf("Successfully sent log entry")
 			}
-			debugf("Successfully sent %d bytes of log data", len(data))
 		} else {
 			// No data, short pause
 			debugf("No data read from buffer, short pause")
@@ -200,51 +173,51 @@ func (c *PapertrailClient) SendLogs(ctx context.Context, buffer Buffer, signal c
 	}
 }
 
-// connectWithRetry attempts to connect to Papertrail with retries
-func (c *PapertrailClient) connectWithRetry(ctx context.Context) (*tls.Conn, error) {
-	fmt.Fprintf(os.Stderr, "Connecting to %s\n", c.addr)
+// sendHTTPRequest sends a single log entry via HTTP POST
+func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) error {
+	// Create request with timeout context
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	
-	// Try to connect immediately first
-	debugf("Attempting initial connection to %s", c.addr)
-	conn, err := c.dialer.Dial(ctx)
-	if err == nil {
-		debugf("Successfully connected to %s on first attempt", c.addr)
-		return conn, nil
+	debugf("Sending HTTP request to %s", c.url)
+	req, err := http.NewRequestWithContext(reqCtx, "POST", c.url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("error creating request: %w", err)
 	}
-	debugf("Initial connection failed: %v", err)
 	
-	// Set up retry with backoff
-	retryDelay := 5 * time.Second
-	maxRetryDelay := 60 * time.Second
-	attempts := 1
-	
-	for {
-		select {
-		case <-ctx.Done():
-			debugf("Context canceled during connection retry after %d attempts", attempts)
-			return nil, fmt.Errorf("context canceled during connection retry: %w", ctx.Err())
-		case <-time.After(retryDelay):
-			// Try to connect
-			attempts++
-			debugf("Connection attempt %d after %v delay", attempts, retryDelay)
-			conn, err := c.dialer.Dial(ctx)
-			if err == nil {
-				fmt.Fprintf(os.Stderr, "Connected to %s\n", c.addr)
-				debugf("Successfully connected after %d attempts", attempts)
-				return conn, nil
-			}
-			
-			fmt.Fprintf(os.Stderr, "Connection attempt failed: %v\n", err)
-			debugf("Connection attempt %d failed: %v", attempts, err)
-			
-			// Increase retry delay with exponential backoff (capped)
-			retryDelay *= 2
-			if retryDelay > maxRetryDelay {
-				retryDelay = maxRetryDelay
-			}
-			debugf("Next retry in %v", retryDelay)
-		}
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+	if c.authToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.authToken))
 	}
+	
+	// Send request
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("error sending request: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	// Check response status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("got non-success status code %d: %s", resp.StatusCode, body)
+	}
+	
+	debugf("HTTP request succeeded with status %d", resp.StatusCode)
+	return nil
+}
+
+// extractMessage extracts the actual message from a syslog formatted line
+func extractMessage(line string) string {
+	// Simple extraction - find the last " - - - " separator and take everything after it
+	parts := strings.Split(line, " - - - ")
+	if len(parts) > 1 {
+		return parts[len(parts)-1]
+	}
+	
+	// If we can't parse it, just return the original line
+	return line
 }
 
 // loadTLSConfig loads certificate and prepares TLS configuration

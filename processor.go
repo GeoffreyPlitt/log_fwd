@@ -31,16 +31,9 @@ func ProcessInput(ctx context.Context, buffer *CircularBuffer, hostname, program
 		line := scanner.Text()
 		hasProcessedLogs = true
 		
-		// Format log message according to RFC5424
-		timestamp := time.Now().Format(time.RFC3339)
-		logMessage := fmt.Sprintf(
-			"<%d>1 %s %s %s - - - %s\n",
-			13, // facility/priority (user notice)
-			timestamp,
-			hostname,
-			programName,
-			line,
-		)
+		// We'll just store the raw message and format it later in the HTTP client
+		// Just append a newline for readability in the buffer
+		logMessage := line + "\n"
 		
 		// Write to buffer
 		if _, err := buffer.Write([]byte(logMessage)); err != nil {
