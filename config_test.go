@@ -125,6 +125,7 @@ func TestParseFlags(t *testing.T) {
 				ProgramName: "custom-logger",
 				BufferPath:  "papertrail_buffer.log",
 				MaxSize:     DefaultMaxSize,
+				ShowVersion: false,
 			},
 		},
 		{
@@ -145,6 +146,23 @@ func TestParseFlags(t *testing.T) {
 				ProgramName: "myapp",
 				BufferPath:  "/var/log/buffer.log",
 				MaxSize:     1048576,
+				ShowVersion: false,
+			},
+		},
+		{
+			name: "version flag",
+			args: []string{
+				"cmd",
+				"-version",
+			},
+			expected: &Config{
+				CertFile:    "",
+				Host:        "",
+				Port:        0,
+				ProgramName: "custom-logger",
+				BufferPath:  "papertrail_buffer.log",
+				MaxSize:     DefaultMaxSize,
+				ShowVersion: true,
 			},
 		},
 	}
@@ -193,6 +211,9 @@ func TestParseFlags(t *testing.T) {
 			}
 			if config.MaxSize != tc.expected.MaxSize {
 				t.Errorf("MaxSize = %d, want %d", config.MaxSize, tc.expected.MaxSize)
+			}
+			if config.ShowVersion != tc.expected.ShowVersion {
+				t.Errorf("ShowVersion = %t, want %t", config.ShowVersion, tc.expected.ShowVersion)
 			}
 		})
 	}

@@ -1,2 +1,33 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+papertrail_fwd
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+*.txt
+coverage.html
+coverage.txt
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Buffer files
+papertrail_buffer.log
+*.log
+
+# IDE files
+.idea/
 .vscode/
+*.swp
+*.swo
+
+# OS-specific files
 .DS_Store
+Thumbs.db

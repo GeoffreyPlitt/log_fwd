@@ -2,11 +2,18 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"runtime/debug"
 	"syscall"
+)
+
+// Version and BuildTime are set via ldflags during build
+var (
+	Version   = "dev"
+	BuildTime = "unknown"
 )
 
 func main() {
@@ -20,6 +27,12 @@ func main() {
 
 	// Parse command line arguments
 	cfg := ParseFlags()
+	
+	// Check if version flag was specified
+	if cfg.ShowVersion {
+		fmt.Printf("papertrail_fwd version %s (built at %s)\n", Version, BuildTime)
+		return
+	}
 	
 	// Additional validation is already done in ParseFlags, but this demonstrates
 	// how we would handle validation errors if we needed to
