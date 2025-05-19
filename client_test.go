@@ -111,17 +111,19 @@ func createMockTLSConn(conn net.Conn) (*tls.Conn, error) {
 
 // TestNewClient tests creating a new client
 func TestNewClient(t *testing.T) {
-	// Create a temporary test certificate
-	tmpDir, err := os.MkdirTemp("", "client-test")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-	
-	certPath := filepath.Join(tmpDir, "cert.pem")
-	
-	// Write a dummy cert
-	certContent := `-----BEGIN CERTIFICATE-----
+	// Test with certificate
+	t.Run("with certificate", func(t *testing.T) {
+		// Create a temporary test certificate
+		tmpDir, err := os.MkdirTemp("", "client-test")
+		if err != nil {
+			t.Fatalf("Failed to create temp dir: %v", err)
+		}
+		defer os.RemoveAll(tmpDir)
+		
+		certPath := filepath.Join(tmpDir, "cert.pem")
+		
+		// Write a dummy cert
+		certContent := `-----BEGIN CERTIFICATE-----
 MIIDazCCAlOgAwIBAgIUXzRGz3yIGrjP7lE7b9Jp2buwNr4wDQYJKoZIhvcNAQEL
 BQAwRTELMAkGA1UEBhMCQVUxEzARBgNVBAgMClNvbWUtU3RhdGUxITAfBgNVBAoM
 GEludGVybmV0IFdpZGdpdHMgUHR5IEx0ZDAeFw0yMzA1MDExNjI4MDlaFw0yNDA0
@@ -139,27 +141,49 @@ SB8Y9pfvVyjAVGFGlDlTHENITUQvHDfGUd+HaDVvpVIAuA1ARIjWRmqwQ9cKz5UI
 7H7WLwkUxk1sjVlbBWg4j8bZN9+tZPYx4frBUoVQCy7GD82wdMQCJCaY7dUHKw2r
 6PYEeNHEyEbVmSWKfvjGewNuWQ7MJyBW4+1j5Qbh5A4bPsHcGnrEZWDlAdxq3BXr
 -----END CERTIFICATE-----`
+		
+		if err := os.WriteFile(certPath, []byte(certContent), 0644); err != nil {
+			t.Fatalf("Failed to write cert file: %v", err)
+		}
+		
+		cfg := &Config{
+			CertFile:    certPath,
+			Host:        "example.com",
+			Port:        12345,
+			ProgramName: "test-program",
+			BufferPath:  "test-buffer.log",
+			MaxSize:     1024,
+		}
+		
+		// Test creating a new client
+		// This will fail because our cert is invalid, but we can verify
+		// that the client was attempted to be constructed
+		_, err = NewClient(cfg)
+		if err != nil && !strings.Contains(err.Error(), "failed to append CA certificate") {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	})
 	
-	if err := os.WriteFile(certPath, []byte(certContent), 0644); err != nil {
-		t.Fatalf("Failed to write cert file: %v", err)
-	}
-	
-	cfg := &Config{
-		CertFile:    certPath,
-		Host:        "example.com",
-		Port:        12345,
-		ProgramName: "test-program",
-		BufferPath:  "test-buffer.log",
-		MaxSize:     1024,
-	}
-	
-	// Test creating a new client
-	// This will fail because our cert is invalid, but we can verify
-	// that the client was attempted to be constructed
-	_, err = NewClient(cfg)
-	if err != nil && !strings.Contains(err.Error(), "failed to append CA certificate") {
-		t.Errorf("Unexpected error: %v", err)
-	}
+	// Test without certificate (using system certs)
+	t.Run("without certificate", func(t *testing.T) {
+		cfg := &Config{
+			Host:        "example.com",
+			Port:        12345,
+			ProgramName: "test-program",
+			BufferPath:  "test-buffer.log",
+			MaxSize:     1024,
+		}
+		
+		// Test creating a new client with system certs
+		client, err := NewClient(cfg)
+		if err != nil {
+			t.Errorf("Error creating client with system certs: %v", err)
+		}
+		
+		if client == nil {
+			t.Error("NewClient returned nil with system certs")
+		}
+	})
 }
 
 // TestNewClientWithDialer tests creating a client with a custom dialer

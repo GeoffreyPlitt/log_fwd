@@ -14,7 +14,7 @@ func TestConfigValidate(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "valid config",
+			name: "valid config with cert",
 			config: Config{
 				CertFile: "cert.pem",
 				Host:     "example.com",
@@ -23,12 +23,12 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "missing cert",
+			name: "valid config without cert",
 			config: Config{
 				Host: "example.com",
 				Port: 12345,
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "missing host",
@@ -106,9 +106,17 @@ func TestParseFlags(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "missing cert",
-			args:    []string{"cmd", "-host", "example.com", "-port", "12345"},
-			wantErr: true,
+			name: "without cert",
+			args: []string{"cmd", "-host", "example.com", "-port", "12345"},
+			expected: &Config{
+				CertFile:    "",
+				Host:        "example.com",
+				Port:        12345,
+				ProgramName: "custom-logger",
+				BufferPath:  "papertrail_buffer.log",
+				MaxSize:     DefaultMaxSize,
+				ShowVersion: false,
+			},
 		},
 		{
 			name: "minimal valid config",

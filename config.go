@@ -31,9 +31,7 @@ type Config struct {
 
 // Validate checks if the config has all required fields
 func (c *Config) Validate() error {
-	if c.CertFile == "" {
-		return fmt.Errorf("%w: certificate path is required", ErrInvalidConfig)
-	}
+	// Certificate path is optional
 	if c.Host == "" {
 		return fmt.Errorf("%w: host is required", ErrInvalidConfig)
 	}
@@ -56,7 +54,7 @@ var CurrentLogFatal LogFatalFunc = DefaultLogFatal
 func ParseFlags() *Config {
 	config := &Config{}
 	
-	flag.StringVar(&config.CertFile, "cert", "", "Path to Papertrail certificate bundle")
+	flag.StringVar(&config.CertFile, "cert", "", "Path to Papertrail certificate bundle (optional, uses system certs if not provided)")
 	flag.StringVar(&config.Host, "host", "", "Papertrail host")
 	flag.IntVar(&config.Port, "port", 0, "Papertrail port")
 	flag.StringVar(&config.ProgramName, "program", "custom-logger", "Program name for log identification")

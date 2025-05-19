@@ -44,10 +44,20 @@ type PapertrailClient struct {
 
 // NewClient creates a new Papertrail client
 func NewClient(cfg *Config) (*PapertrailClient, error) {
-	// Load TLS config
-	tlsConfig, err := loadTLSConfig(cfg.CertFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load TLS config: %w", err)
+	// Load TLS config if cert file provided, otherwise use system certs
+	var tlsConfig *tls.Config
+	var err error
+	
+	if cfg.CertFile != "" {
+		tlsConfig, err = loadTLSConfig(cfg.CertFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load TLS config: %w", err)
+		}
+	} else {
+		// Use system root certificates
+		tlsConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
 	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
