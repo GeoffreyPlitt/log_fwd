@@ -7,12 +7,15 @@ import (
 )
 
 func TestParseFlags(t *testing.T) {
-	// Save original arguments
+	// Save original arguments and fatal function
 	oldArgs := os.Args
+	oldFatal := CurrentLogFatal
+	
 	// Restore them when we're done
 	defer func() {
 		os.Args = oldArgs
 		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+		CurrentLogFatal = oldFatal
 	}()
 
 	tests := []struct {
@@ -85,11 +88,9 @@ func TestParseFlags(t *testing.T) {
 			// Reset flags
 			flag.CommandLine = flag.NewFlagSet(tc.args[0], flag.ContinueOnError)
 
-			// Set up a fake exit function to detect fatal errors
+			// Set up a mock fatal function
 			var exitCalled bool
-			origExit := logFatal
-			defer func() { logFatal = origExit }()
-			logFatal = func(v ...interface{}) {
+			CurrentLogFatal = func(v ...interface{}) {
 				exitCalled = true
 			}
 

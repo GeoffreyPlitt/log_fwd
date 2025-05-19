@@ -23,8 +23,14 @@ type Config struct {
 	MaxSize     int64
 }
 
-// Override log.Fatal for testing
-var logFatal = log.Fatal
+// LogFatalFunc defines the signature for a fatal logging function
+type LogFatalFunc func(v ...interface{})
+
+// DefaultLogFatal is the default implementation of LogFatalFunc
+var DefaultLogFatal LogFatalFunc = log.Fatal
+
+// CurrentLogFatal is the current implementation of LogFatalFunc (can be swapped for testing)
+var CurrentLogFatal LogFatalFunc = DefaultLogFatal
 
 // ParseFlags parses command line flags and returns a config
 func ParseFlags() *Config {
@@ -42,7 +48,7 @@ func ParseFlags() *Config {
 	
 	// Validate required flags
 	if config.CertFile == "" || config.Host == "" || config.Port == 0 {
-		logFatal("Certificate path, host, and port are required")
+		CurrentLogFatal("Certificate path, host, and port are required")
 	}
 	
 	return config

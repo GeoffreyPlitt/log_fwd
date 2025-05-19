@@ -11,12 +11,27 @@ import (
 	"time"
 )
 
+// TLSDialer defines an interface for establishing TLS connections
+type TLSDialer interface {
+	Dial(ctx context.Context) (*tls.Conn, error)
+}
+
+// StandardTLSDialer implements the TLSDialer interface with standard TLS dialing
+type StandardTLSDialer struct {
+	tlsConfig *tls.Config
+	addr      string
+}
+
+// Dial establishes a TLS connection
+func (d *StandardTLSDialer) Dial(ctx context.Context) (*tls.Conn, error) {
+	return tls.Dial("tcp", d.addr, d.tlsConfig)
+}
+
 // PapertrailClient handles sending logs to Papertrail
 type PapertrailClient struct {
 	config    *Config
-	tlsConfig *tls.Config
+	dialer    TLSDialer
 	addr      string
-	dialFunc  func(ctx context.Context) (*tls.Conn, error) // Custom dialer for testing
 }
 
 // NewClient creates a new Papertrail client
@@ -29,12 +44,28 @@ func NewClient(cfg *Config) (*PapertrailClient, error) {
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 
-	return &PapertrailClient{
-		config:    cfg,
+	// Create standard dialer
+	dialer := &StandardTLSDialer{
 		tlsConfig: tlsConfig,
 		addr:      addr,
-		dialFunc:  func(ctx context.Context) (*tls.Conn, error) { return tls.Dial("tcp", addr, tlsConfig) },
+	}
+
+	return &PapertrailClient{
+		config: cfg,
+		dialer: dialer,
+		addr:   addr,
 	}, nil
+}
+
+// NewClientWithDialer creates a new Papertrail client with a custom dialer (useful for testing)
+func NewClientWithDialer(cfg *Config, dialer TLSDialer) *PapertrailClient {
+	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	
+	return &PapertrailClient{
+		config: cfg,
+		dialer: dialer,
+		addr:   addr,
+	}
 }
 
 // SendLogs reads from buffer and sends to Papertrail
@@ -102,7 +133,7 @@ func (c *PapertrailClient) connectWithRetry(ctx context.Context) (*tls.Conn, err
 	log.Printf("Connecting to %s", c.addr)
 	
 	// Try to connect immediately first
-	conn, err := c.dialFunc(ctx)
+	conn, err := c.dialer.Dial(ctx)
 	if err == nil {
 		return conn, nil
 	}
@@ -117,7 +148,7 @@ func (c *PapertrailClient) connectWithRetry(ctx context.Context) (*tls.Conn, err
 			return nil, fmt.Errorf("context canceled during connection retry")
 		case <-time.After(retryDelay):
 			// Try to connect
-			conn, err := c.dialFunc(ctx)
+			conn, err := c.dialer.Dial(ctx)
 			if err == nil {
 				log.Printf("Connected to %s", c.addr)
 				return conn, nil
