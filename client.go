@@ -68,8 +68,14 @@ func NewClientWithDialer(cfg *Config, dialer TLSDialer) *PapertrailClient {
 	}
 }
 
+// Buffer defines the interface for buffer types used with SendLogs
+type Buffer interface {
+	Read(maxBytes int64) ([]byte, error)
+	HasData() bool
+}
+
 // SendLogs reads from buffer and sends to Papertrail
-func (c *PapertrailClient) SendLogs(ctx context.Context, buffer *CircularBuffer, signal chan struct{}) {
+func (c *PapertrailClient) SendLogs(ctx context.Context, buffer Buffer, signal chan struct{}) {
 	var conn *tls.Conn
 	
 	for {

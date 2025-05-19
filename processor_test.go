@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestProcessInput(t *testing.T) {
-	// Skip this test as it requires stdin replacement which is difficult to mock properly
-	t.Skip("Skipping stdin test, requires more complex setup")
-
 	// Create a temporary file for testing
 	tmpdir, err := os.MkdirTemp("", "processor-test")
 	if err != nil {
@@ -28,60 +26,80 @@ func TestProcessInput(t *testing.T) {
 	}
 	defer buffer.Close()
 
-	// Create a test hostname and program name
-	hostname := "test-host"
-	programName := "test-program"
+	// Create test data
+	testInput := "test log message"
+	testHostname := "test-host"
+	testProgram := "test-program"
 
-	// Create a context with cancel
-	_, cancel := context.WithCancel(context.Background())
+	// We'll create a pipe for stdin
+	originalStdin := os.Stdin
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Failed to create pipe: %v", err)
+	}
+	os.Stdin = r
+	defer func() {
+		os.Stdin = originalStdin
+	}()
+
+	// Create a context that we can cancel
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Create a signal channel
+	// Create a signaling channel
 	signal := make(chan struct{}, 1)
 
-	// Instead of trying to mock stdin, we'll directly test the log formatting
-	testInput := "test log message"
-	timestamp := time.Now().Format(time.RFC3339)
-	logMessage := fmt.Sprintf(
-		"<%d>1 %s %s %s - - - %s\n",
-		13, // facility/priority (user notice)
-		timestamp,
-		hostname,
-		programName,
-		testInput,
-	)
+	// Start processing in a goroutine
+	done := make(chan struct{})
+	go func() {
+		ProcessInput(ctx, buffer, testHostname, testProgram, signal)
+		close(done)
+	}()
 
-	// Write directly to buffer
-	_, err = buffer.Write([]byte(logMessage))
+	// Write a test message to stdin
+	_, err = fmt.Fprintln(w, testInput)
 	if err != nil {
-		t.Fatalf("Failed to write to buffer: %v", err)
+		t.Fatalf("Failed to write to pipe: %v", err)
 	}
 
-	// Signal new logs
-	signal <- struct{}{}
+	// Wait for signal or timeout
+	select {
+	case <-signal:
+		// Success
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for signal")
+	}
 
-	// Read the data from the buffer
+	// Close stdin to simulate EOF
+	w.Close()
+
+	// Cancel the context to stop processing
+	cancel()
+
+	// Wait for processor to finish
+	<-done
+
+	// Now read the buffer and verify the contents
 	data, err := buffer.Read(1024)
 	if err != nil {
 		t.Fatalf("Failed to read from buffer: %v", err)
 	}
 
-	// Verify the log message format
-	expected := "<13>1 "
-	if !bytes.Contains(data, []byte(expected)) {
-		t.Errorf("Log message doesn't contain expected prefix %q: %s", expected, data)
-	}
-
-	// Verify that hostname and program name are in the log message
-	if !bytes.Contains(data, []byte(hostname)) {
-		t.Errorf("Log message doesn't contain hostname %q: %s", hostname, data)
-	}
-	if !bytes.Contains(data, []byte(programName)) {
-		t.Errorf("Log message doesn't contain program name %q: %s", programName, data)
-	}
-
-	// Verify that the original message is in the log message
+	// The log message should contain our input and be properly formatted
 	if !bytes.Contains(data, []byte(testInput)) {
-		t.Errorf("Log message doesn't contain original message %q: %s", testInput, data)
+		t.Errorf("Buffer doesn't contain our input %q: %s", testInput, data)
+	}
+
+	// Should contain the syslog priority and hostname/program
+	if !strings.Contains(string(data), "<13>1 ") {
+		t.Errorf("Missing syslog priority: %s", data)
+	}
+	
+	if !bytes.Contains(data, []byte(testHostname)) {
+		t.Errorf("Missing hostname: %s", data)
+	}
+	
+	if !bytes.Contains(data, []byte(testProgram)) {
+		t.Errorf("Missing program name: %s", data)
 	}
 }
