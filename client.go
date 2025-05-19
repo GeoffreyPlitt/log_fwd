@@ -175,6 +175,8 @@ func (c *PapertrailClient) SendLogs(ctx context.Context, buffer Buffer, signal c
 
 		if len(data) > 0 {
 			debugf("Sending %d bytes of log data", len(data))
+			// Log the actual content being sent
+			logData(data)
 			if _, err := conn.Write(data); err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to send logs: %v\n", err)
 				debugf("Failed to send logs: %v", err)

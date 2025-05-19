@@ -24,6 +24,44 @@ func debugf(format string, args ...interface{}) {
 	}
 }
 
+// logData safely logs binary data with non-printable characters escaped
+func logData(data []byte) {
+	if !isVerbose {
+		return
+	}
+	
+	// Create a safe version of the content for logging (up to a reasonable length)
+	maxLen := 1024
+	if len(data) > maxLen {
+		debugf("(Showing first %d bytes of %d total)", maxLen, len(data))
+		data = data[:maxLen]
+	}
+	
+	safeContent := make([]byte, 0, len(data))
+	for _, b := range data {
+		// Replace non-printable characters with their escaped representation
+		if b < 32 || b > 126 {
+			// For common control characters, use their standard escape sequences
+			switch b {
+			case '\n':
+				safeContent = append(safeContent, '\\', 'n')
+			case '\r':
+				safeContent = append(safeContent, '\\', 'r')
+			case '\t':
+				safeContent = append(safeContent, '\\', 't')
+			default:
+				// For other non-printables, use \xHH format
+				hex := fmt.Sprintf("\\x%02x", b)
+				safeContent = append(safeContent, []byte(hex)...)
+			}
+		} else {
+			safeContent = append(safeContent, b)
+		}
+	}
+	
+	debugf("Log content: %s", string(safeContent))
+}
+
 func main() {
 	// Set up panic recovery
 	defer func() {
