@@ -1,115 +1,64 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
+	"encoding/json"
 	"fmt"
-	"net"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
 
-// MockTLSDialer implements the TLSDialer interface for testing
-type MockTLSDialer struct {
-	MockConn  *MockConn
-	DialError error
-	DialCalls int
-	mu        sync.Mutex // Protects DialCalls
-}
-
-// MockConn implements net.Conn interface for testing
-type MockConn struct {
-	buffer     bytes.Buffer
-	readBuffer bytes.Buffer
-	mutex      sync.Mutex
-	closed     bool
-	readError  error
-	writeError error
-}
-
-func (m *MockConn) Read(p []byte) (n int, err error) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	if m.closed {
-		return 0, net.ErrClosed
-	}
-	if m.readError != nil {
-		return 0, m.readError
-	}
-	return m.readBuffer.Read(p)
-}
-
-func (m *MockConn) Write(p []byte) (n int, err error) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	if m.closed {
-		return 0, net.ErrClosed
-	}
-	if m.writeError != nil {
-		return 0, m.writeError
-	}
-	return m.buffer.Write(p)
-}
-
-func (m *MockConn) Close() error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.closed = true
-	return nil
-}
-
-func (m *MockConn) LocalAddr() net.Addr                { return &net.TCPAddr{} }
-func (m *MockConn) RemoteAddr() net.Addr               { return &net.TCPAddr{} }
-func (m *MockConn) SetDeadline(t time.Time) error      { return nil }
-func (m *MockConn) SetReadDeadline(t time.Time) error  { return nil }
-func (m *MockConn) SetWriteDeadline(t time.Time) error { return nil }
-
-// MockTLSConn is a mock implementation of a TLS connection
-type MockTLSConn struct {
-	net.Conn
-	handshakeCalled bool
-}
-
-func (c *MockTLSConn) Handshake() error {
-	c.handshakeCalled = true
-	return nil
-}
-
-// Dial implements the TLSDialer interface
-func (d *MockTLSDialer) Dial(ctx context.Context) (*tls.Conn, error) {
-	d.mu.Lock()
-	d.DialCalls++
-	dialError := d.DialError
-	d.mu.Unlock()
+// MockHTTPServer creates a test HTTP server for testing the HTTP client
+func createMockHTTPServer(t *testing.T, statusCode int, responseBody string) *httptest.Server {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check for expected headers
+		contentType := r.Header.Get("Content-Type")
+		
+		if contentType != "application/json" {
+			t.Errorf("Expected Content-Type header 'application/json', got %q", contentType)
+		}
+		
+		// Read and validate request body
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("Error reading request body: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		
+		// Verify that the body is valid JSON with dt and message fields
+		var logEntry LogEntry
+		if err := json.Unmarshal(body, &logEntry); err != nil {
+			t.Errorf("Invalid JSON in request body: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		
+		if logEntry.Timestamp == "" {
+			t.Error("Missing dt field in log entry")
+		}
+		
+		if logEntry.Message == "" {
+			t.Error("Missing message field in log entry")
+		}
+		
+		// Return the configured response
+		w.WriteHeader(statusCode)
+		w.Write([]byte(responseBody))
+	})
 	
-	if dialError != nil {
-		return nil, dialError
-	}
-	
-	// Use our mock connection
-	conn := d.MockConn
-	if conn == nil {
-		conn = &MockConn{}
-	}
-	
-	// Return a real tls.Conn for use in testing
-	// We'll create a temporary certificate for this
-	return createMockTLSConn(conn)
+	return httptest.NewTLSServer(handler)
 }
 
-// Helper to create a temporary certificate and return a TLS connection
-func createMockTLSConn(conn net.Conn) (*tls.Conn, error) {
-	// For testing purposes, we'll avoid actual TLS handshakes
-	// by returning a nil *tls.Conn - we'll handle this in our tests
-	return nil, nil
-}
+// Use the existing MockBuffer from mock_buffer.go
 
-// TestNewClient tests creating a new client
+// TestNewClient tests creating a new HTTP client
 func TestNewClient(t *testing.T) {
 	// Test with certificate
 	t.Run("with certificate", func(t *testing.T) {
@@ -149,10 +98,11 @@ SB8Y9pfvVyjAVGFGlDlTHENITUQvHDfGUd+HaDVvpVIAuA1ARIjWRmqwQ9cKz5UI
 		cfg := &Config{
 			CertFile:    certPath,
 			Host:        "example.com",
-			Port:        12345,
+			Port:        443,
 			ProgramName: "test-program",
 			BufferPath:  "test-buffer.log",
 			MaxSize:     1024,
+			AuthToken:   "test-token",
 		}
 		
 		// Test creating a new client
@@ -168,10 +118,11 @@ SB8Y9pfvVyjAVGFGlDlTHENITUQvHDfGUd+HaDVvpVIAuA1ARIjWRmqwQ9cKz5UI
 	t.Run("without certificate", func(t *testing.T) {
 		cfg := &Config{
 			Host:        "example.com",
-			Port:        12345,
+			Port:        443,
 			ProgramName: "test-program",
 			BufferPath:  "test-buffer.log",
 			MaxSize:     1024,
+			AuthToken:   "test-token",
 		}
 		
 		// Test creating a new client with system certs
@@ -186,132 +137,201 @@ SB8Y9pfvVyjAVGFGlDlTHENITUQvHDfGUd+HaDVvpVIAuA1ARIjWRmqwQ9cKz5UI
 	})
 }
 
-// TestNewClientWithDialer tests creating a client with a custom dialer
-func TestNewClientWithDialer(t *testing.T) {
-	mockDialer := &MockTLSDialer{
-		MockConn: &MockConn{},
+// TestSendHTTPRequest tests the HTTP request functionality
+func TestSendHTTPRequest(t *testing.T) {
+	// Create a mock HTTP server
+	server := createMockHTTPServer(t, http.StatusAccepted, "")
+	defer server.Close()
+	
+	// Create a client that points to our test server
+	client := &HTTPClient{
+		config: &Config{
+			AuthToken: "test-token",
+		},
+		client: server.Client(),
+		url:    server.URL,
 	}
 	
-	cfg := &Config{
-		CertFile:    "fake.pem",
-		Host:        "example.com",
-		Port:        12345,
-		ProgramName: "test-program",
-		BufferPath:  "test-buffer.log",
-		MaxSize:     1024,
+	// Create a test log entry
+	logEntry := LogEntry{
+		Timestamp: time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		Message:   "Test log message",
 	}
 	
-	client := NewClientWithDialer(cfg, mockDialer)
-	
-	if client == nil {
-		t.Error("NewClientWithDialer returned nil")
+	jsonData, err := json.Marshal(logEntry)
+	if err != nil {
+		t.Fatalf("Failed to marshal JSON: %v", err)
 	}
 	
-	if client.config != cfg {
-		t.Error("Client config doesn't match provided config")
-	}
-	
-	if client.dialer != mockDialer {
-		t.Error("Client dialer doesn't match provided dialer")
-	}
-	
-	expectedAddr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-	if client.addr != expectedAddr {
-		t.Errorf("Client addr = %q, want %q", client.addr, expectedAddr)
+	// Send the request
+	err = client.sendHTTPRequest(context.Background(), jsonData)
+	if err != nil {
+		t.Errorf("sendHTTPRequest failed: %v", err)
 	}
 }
 
-// Test the Standard TLS Dialer implementation
-func TestStandardTLSDialer(t *testing.T) {
-	// Create a dialer - we'll use an obviously invalid address
-	// so the connection will fail in a predictable way
-	dialer := &StandardTLSDialer{
-		tlsConfig: &tls.Config{},
-		addr:      "invalid-host:12345", 
-	}
+// TestSendHTTPRequestErrors tests error handling in HTTP requests
+func TestSendHTTPRequestErrors(t *testing.T) {
+	// Test with server error
+	t.Run("server error", func(t *testing.T) {
+		server := createMockHTTPServer(t, http.StatusInternalServerError, "Internal Server Error")
+		defer server.Close()
+		
+		client := &HTTPClient{
+			config: &Config{
+				AuthToken: "test-token",
+			},
+			client: server.Client(),
+			url:    server.URL,
+		}
+		
+		logEntry := LogEntry{
+			Timestamp: time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+			Message:   "Test log message",
+		}
+		
+		jsonData, err := json.Marshal(logEntry)
+		if err != nil {
+			t.Fatalf("Failed to marshal JSON: %v", err)
+		}
+		
+		// Should get an error due to 500 status code
+		err = client.sendHTTPRequest(context.Background(), jsonData)
+		if err == nil {
+			t.Error("Expected error for 500 status, got nil")
+		}
+	})
 	
-	// Attempt to dial - this should fail with a known error pattern
-	_, err := dialer.Dial(context.Background())
-	if err == nil {
-		t.Error("Expected dial to fail with invalid host")
-	}
+	// Test with invalid URL
+	t.Run("invalid URL", func(t *testing.T) {
+		client := &HTTPClient{
+			config: &Config{
+				AuthToken: "test-token",
+			},
+			client: http.DefaultClient,
+			url:    "http://invalid-test-url-that-does-not-exist",
+		}
+		
+		logEntry := LogEntry{
+			Timestamp: time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+			Message:   "Test log message",
+		}
+		
+		jsonData, err := json.Marshal(logEntry)
+		if err != nil {
+			t.Fatalf("Failed to marshal JSON: %v", err)
+		}
+		
+		// Should get an error due to invalid URL
+		err = client.sendHTTPRequest(context.Background(), jsonData)
+		if err == nil {
+			t.Error("Expected error for invalid URL, got nil")
+		}
+	})
 }
 
-// Note: We can't test SendLogs and connectWithRetry properly without 
-// mocking the TLS connections completely, which is complex.
-// This test simply verifies that our mock TLS dialer is properly called.
-func TestDialerUsage(t *testing.T) {
-	// Set up a simple test scenario
-	mockDialer := &MockTLSDialer{
-		MockConn: &MockConn{},
-		// First return an error, then succeed on retry
-		DialError: fmt.Errorf("test error"),
+// TestSendLogsContextCancellation tests that SendLogs exits when context is cancelled
+func TestSendLogsContextCancellation(t *testing.T) {
+	server := createMockHTTPServer(t, http.StatusAccepted, "")
+	defer server.Close()
+	
+	// Create a mock buffer with NO data
+	mockBuffer := &MockBuffer{}
+	
+	// Create a client
+	client := &HTTPClient{
+		config: &Config{
+			Host:      "example.com",
+			Port:      443,
+			AuthToken: "test-token",
+		},
+		client: server.Client(),
+		url:    server.URL,
 	}
 	
-	cfg := &Config{
-		CertFile:    "fake.pem",
-		Host:        "example.com",
-		Port:        12345,
-		ProgramName: "test-program",
-		BufferPath:  "test-buffer.log",
-		MaxSize:     1024,
-	}
+	// Create a signal channel
+	signal := make(chan struct{}, 1)
 	
-	client := NewClientWithDialer(cfg, mockDialer)
-	
-	// Now attempt to connect with retry, but we'll use a cancel context to prevent blocking
+	// Create a context with cancel
 	ctx, cancel := context.WithCancel(context.Background())
 	
-	// Use a WaitGroup to ensure the goroutine completes before we check results
-	var wg sync.WaitGroup
-	wg.Add(1)
-	
-	// Create a mutex to protect access to shared variables
-	var mu sync.Mutex
-	var errResult error
-	
-	// Start the attempt in a goroutine
-	go func() {
-		defer wg.Done()
-		var conn *tls.Conn
-		conn, err := client.connectWithRetry(ctx)
-		
-		mu.Lock()
-		errResult = err
-		mu.Unlock()
-		
-		// Close connection if it was somehow successful
-		if conn != nil {
-			conn.Close()
-		}
-	}()
-	
-	// Allow some time for the first attempt - increased to ensure dialer is called
-	time.Sleep(50 * time.Millisecond)
-	
-	// Get dial call count with proper synchronization
-	mockDialer.mu.Lock()
-	dialCalls := mockDialer.DialCalls
-	mockDialer.mu.Unlock()
-	
-	// Verify the dialer was called at least once
-	if dialCalls == 0 {
-		t.Error("Dialer was not called")
-	}
-	
-	// Cancel the context to end the test
+	// Immediately cancel the context
 	cancel()
 	
-	// Wait for goroutine to complete rather than sleeping
-	wg.Wait()
+	// Start the SendLogs function directly - it should exit right away
+	// since we cancelled the context
+	client.SendLogs(ctx, mockBuffer, signal)
 	
-	// Check result with mutex protection
-	mu.Lock()
-	er := errResult
-	mu.Unlock()
+	// If we got here, SendLogs correctly handled the context cancellation
+}
+
+// TestSendLogsWithData tests sending logs with actual data
+func TestSendLogsWithData(t *testing.T) {
+	server := createMockHTTPServer(t, http.StatusAccepted, "")
+	defer server.Close()
 	
-	// Should have received an error (either our test error or context canceled)
-	if er == nil {
-		t.Error("Expected an error from connectWithRetry")
+	// Create a mock buffer WITH data
+	mockBuffer := &MockBuffer{}
+	mockBuffer.Write([]byte("test log message\n"))
+	
+	// Create a client
+	client := &HTTPClient{
+		config: &Config{
+			Host:      "example.com",
+			Port:      443,
+			AuthToken: "test-token",
+		},
+		client: server.Client(),
+		url:    server.URL,
+	}
+	
+	// Create a signal channel
+	signal := make(chan struct{}, 1)
+	
+	// Create a context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	
+	// Start the SendLogs function - it should process the log data
+	client.SendLogs(ctx, mockBuffer, signal)
+	
+	// If we got here, SendLogs correctly handled the logs
+}
+
+// TestExtractMessage tests the message extraction function
+func TestExtractMessage(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{
+			// Normal syslog format
+			input:    "<13>1 2023-04-14T15:04:05Z hostname program - - - Actual log message",
+			expected: "Actual log message",
+		},
+		{
+			// No separator
+			input:    "Plain log message",
+			expected: "Plain log message",
+		},
+		{
+			// Multiple separators
+			input:    "<13>1 2023-04-14T15:04:05Z hostname program - - - Message with - - - separators",
+			expected: "Message with - - - separators",
+		},
+		{
+			// Empty string
+			input:    "",
+			expected: "",
+		},
+	}
+	
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("test %d", i), func(t *testing.T) {
+			result := extractMessage(test.input)
+			if result != test.expected {
+				t.Errorf("extractMessage(%q) = %q, want %q", test.input, result, test.expected)
+			}
+		})
 	}
 }

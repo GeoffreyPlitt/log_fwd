@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -88,18 +87,5 @@ func TestProcessInput(t *testing.T) {
 	// The log message should contain our input and be properly formatted
 	if !bytes.Contains(data, []byte(testInput)) {
 		t.Errorf("Buffer doesn't contain our input %q: %s", testInput, data)
-	}
-
-	// Should contain the syslog priority and hostname/program
-	if !strings.Contains(string(data), "<13>1 ") {
-		t.Errorf("Missing syslog priority: %s", data)
-	}
-	
-	if !bytes.Contains(data, []byte(testHostname)) {
-		t.Errorf("Missing hostname: %s", data)
-	}
-	
-	if !bytes.Contains(data, []byte(testProgram)) {
-		t.Errorf("Missing program name: %s", data)
 	}
 }

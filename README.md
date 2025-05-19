@@ -1,4 +1,4 @@
-# papertrail_fwd --> Switching to HTTP 
+# Log Forwarder
 
 [![Go Tests](https://github.com/GeoffreyPlitt/papertrail_fwd/actions/workflows/go.yml/badge.svg)](https://github.com/GeoffreyPlitt/papertrail_fwd/actions/workflows/go.yml)
 [![codecov](https://codecov.io/gh/GeoffreyPlitt/papertrail_fwd/branch/main/graph/badge.svg)](https://codecov.io/gh/GeoffreyPlitt/papertrail_fwd)
@@ -6,14 +6,15 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/GeoffreyPlitt/papertrail_fwd)](https://goreportcard.com/report/github.com/GeoffreyPlitt/papertrail_fwd)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This program forwards logs to Papertrail (a log management service). It reads data from stdin, formats it as RFC5424 syslog messages, stores them in a circular buffer file, and sends them to Papertrail over TLS. It handles reconnections, buffering during disconnections, and supports command-line arguments for configuration.
+This program forwards logs to log management services using HTTP APIs. It reads data from stdin, stores the logs in a circular buffer file, and sends them to the log service over HTTPS. It handles reconnections, buffering during disconnections, and supports various command-line arguments for configuration.
 
 ## Features
 
 - Disk-based circular buffer for log persistence
 - Automatic buffer growth as needed (up to configured maximum)
 - Reconnection with exponential backoff
-- Properly formatted RFC5424 syslog messages
+- HTTP API integration with JSON payload formatting
+- Bearer token authentication
 - Clean shutdown on signal interrupts
 - Efficient buffer management for large volumes of logs
 - Panic recovery
@@ -39,34 +40,40 @@ go build
 
 ```bash
 # Basic usage
-some_program | ./papertrail_fwd -cert /path/to/papertrail-bundle.pem -host logs.papertrailapp.com -port 12345
+some_program | ./papertrail_fwd -host logs.example.com -token YOUR_API_TOKEN
 
 # With all options
 some_program | ./papertrail_fwd \
-  -cert /path/to/papertrail-bundle.pem \
-  -host logs.papertrailapp.com \
-  -port 12345 \
+  -cert /path/to/cert-bundle.pem \
+  -host logs.example.com \
+  -port 443 \
   -program "my-custom-app" \
-  -buffer "/var/log/papertrail_buffer.log" \
-  -maxsize 209715200
+  -buffer "/var/log/log_buffer.log" \
+  -maxsize 209715200 \
+  -token YOUR_API_TOKEN \
+  -k
 ```
 
 ## Command-line options
 
 | Option | Description | Default |
 |--------|-------------|--------|
-| `-cert` | Path to Papertrail certificate bundle | (required) |
-| `-host` | Papertrail host | (required) |
-| `-port` | Papertrail port | (required) |
+| `-cert` | Path to certificate bundle | (uses system certs) |
+| `-host` | Log service host | (required) |
+| `-port` | Log service port | 443 |
 | `-program` | Program name for log identification | "custom-logger" |
 | `-buffer` | Path to buffer file | "papertrail_buffer.log" |
 | `-maxsize` | Maximum buffer size in bytes | 100MB |
+| `-token` | Authorization token | (required) |
+| `-k` | Allow insecure SSL connections | false |
 
 ## Example
 
+### BetterStack Logs
+
 ```bash
-# Forward application logs to Papertrail
-tail -f /var/log/application.log | ./papertrail_fwd -cert /etc/papertrail-bundle.pem -host logs.papertrailapp.com -port 12345 -program "my-application"
+# Forward application logs to BetterStack Logs
+tail -f /var/log/application.log | ./papertrail_fwd -host s1234567.eu-nbg-2.betterstackdata.com -token w89nWsQsPXyyq1D4XBt2mDko
 ```
 
 ## Development

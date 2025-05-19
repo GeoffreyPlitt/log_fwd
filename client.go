@@ -210,10 +210,9 @@ func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) error
 
 // extractMessage extracts the actual message from a syslog formatted line
 func extractMessage(line string) string {
-	// Simple extraction - find the last " - - - " separator and take everything after it
-	parts := strings.Split(line, " - - - ")
-	if len(parts) > 1 {
-		return parts[len(parts)-1]
+	// For syslog format, find " - - - " as separator
+	if idx := strings.Index(line, " - - - "); idx != -1 {
+		return line[idx+7:] // Skip the separator
 	}
 	
 	// If we can't parse it, just return the original line

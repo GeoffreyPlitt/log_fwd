@@ -16,42 +16,56 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "valid config with cert",
 			config: Config{
-				CertFile: "cert.pem",
-				Host:     "example.com",
-				Port:     12345,
+				CertFile:  "cert.pem",
+				Host:      "example.com",
+				Port:      443,
+				AuthToken: "test-token",
 			},
 			wantErr: false,
 		},
 		{
 			name: "valid config without cert",
 			config: Config{
-				Host: "example.com",
-				Port: 12345,
+				Host:      "example.com",
+				Port:      443,
+				AuthToken: "test-token",
 			},
 			wantErr: false,
 		},
 		{
 			name: "missing host",
 			config: Config{
-				CertFile: "cert.pem",
-				Port:     12345,
+				CertFile:  "cert.pem",
+				Port:      443,
+				AuthToken: "test-token",
 			},
 			wantErr: true,
 		},
 		{
 			name: "missing port",
 			config: Config{
-				CertFile: "cert.pem",
-				Host:     "example.com",
+				CertFile:  "cert.pem",
+				Host:      "example.com",
+				AuthToken: "test-token",
 			},
 			wantErr: true,
 		},
 		{
 			name: "invalid port",
 			config: Config{
+				CertFile:  "cert.pem",
+				Host:      "example.com",
+				Port:      -1,
+				AuthToken: "test-token",
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing token",
+			config: Config{
 				CertFile: "cert.pem",
 				Host:     "example.com",
-				Port:     -1,
+				Port:     443,
 			},
 			wantErr: true,
 		},
@@ -96,44 +110,32 @@ func TestParseFlags(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "missing port",
-			args:    []string{"cmd", "-cert", "cert.pem", "-host", "example.com"},
+			name:    "missing token",
+			args:    []string{"cmd", "-host", "example.com", "-port", "443"},
 			wantErr: true,
 		},
 		{
 			name:    "missing host",
-			args:    []string{"cmd", "-cert", "cert.pem", "-port", "12345"},
+			args:    []string{"cmd", "-token", "mytoken", "-port", "443"},
 			wantErr: true,
-		},
-		{
-			name: "without cert",
-			args: []string{"cmd", "-host", "example.com", "-port", "12345"},
-			expected: &Config{
-				CertFile:    "",
-				Host:        "example.com",
-				Port:        12345,
-				ProgramName: "custom-logger",
-				BufferPath:  "papertrail_buffer.log",
-				MaxSize:     DefaultMaxSize,
-				ShowVersion: false,
-			},
 		},
 		{
 			name: "minimal valid config",
 			args: []string{
 				"cmd",
-				"-cert", "cert.pem",
 				"-host", "example.com",
-				"-port", "12345",
+				"-token", "mytoken",
 			},
 			expected: &Config{
-				CertFile:    "cert.pem",
+				CertFile:    "",
 				Host:        "example.com",
-				Port:        12345,
+				Port:        443, // Default port is now 443
 				ProgramName: "custom-logger",
 				BufferPath:  "papertrail_buffer.log",
 				MaxSize:     DefaultMaxSize,
 				ShowVersion: false,
+				AuthToken:   "mytoken",
+				InsecureSSL: false,
 			},
 		},
 		{
@@ -146,6 +148,8 @@ func TestParseFlags(t *testing.T) {
 				"-program", "myapp",
 				"-buffer", "/var/log/buffer.log",
 				"-maxsize", "1048576",
+				"-token", "secret-token",
+				"-k",
 			},
 			expected: &Config{
 				CertFile:    "cert.pem",
@@ -155,6 +159,8 @@ func TestParseFlags(t *testing.T) {
 				BufferPath:  "/var/log/buffer.log",
 				MaxSize:     1048576,
 				ShowVersion: false,
+				AuthToken:   "secret-token",
+				InsecureSSL: true,
 			},
 		},
 		{
@@ -166,11 +172,13 @@ func TestParseFlags(t *testing.T) {
 			expected: &Config{
 				CertFile:    "",
 				Host:        "",
-				Port:        0,
+				Port:        443, // Default port is now 443
 				ProgramName: "custom-logger",
 				BufferPath:  "papertrail_buffer.log",
 				MaxSize:     DefaultMaxSize,
 				ShowVersion: true,
+				AuthToken:   "",
+				InsecureSSL: false,
 			},
 		},
 	}
@@ -222,6 +230,12 @@ func TestParseFlags(t *testing.T) {
 			}
 			if config.ShowVersion != tc.expected.ShowVersion {
 				t.Errorf("ShowVersion = %t, want %t", config.ShowVersion, tc.expected.ShowVersion)
+			}
+			if config.AuthToken != tc.expected.AuthToken {
+				t.Errorf("AuthToken = %q, want %q", config.AuthToken, tc.expected.AuthToken)
+			}
+			if config.InsecureSSL != tc.expected.InsecureSSL {
+				t.Errorf("InsecureSSL = %t, want %t", config.InsecureSSL, tc.expected.InsecureSSL)
 			}
 		})
 	}
