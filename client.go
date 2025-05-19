@@ -23,6 +23,11 @@ type HTTPClient struct {
 	insecureSSL  bool
 }
 
+// Timestamp format constants
+const (
+	TimestampFormat = "2006-01-02 15:04:05 UTC" // Format for timestamp sent to log service
+)
+
 // LogEntry represents a JSON log entry for the HTTP API
 type LogEntry struct {
 	Timestamp string `json:"dt"`
@@ -158,7 +163,7 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 				message := extractMessage(line)
 				
 				// Create JSON payload
-				timestamp := time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
+				timestamp := time.Now().UTC().Format(TimestampFormat)
 				logEntry := LogEntry{
 					Timestamp: timestamp,
 					Message:   message,
@@ -215,8 +220,29 @@ func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) (int,
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.authToken))
 	}
 	
-	// Log request details in verbose mode
-	debugf("Request headers: %+v", req.Header)
+	// Log request details in verbose mode, but mask sensitive information
+	// Copy headers and mask sensitive values
+	maskedHeaders := make(http.Header)
+	for k, v := range req.Header {
+		if k == "Authorization" && len(v) > 0 {
+			// Mask token but show first/last few chars
+			authVal := v[0]
+			if len(authVal) > 15 && strings.HasPrefix(authVal, "Bearer ") {
+				token := authVal[7:] // Remove "Bearer " prefix
+				maskedToken := token
+				if len(token) > 10 {
+					// Show first 4 and last 4 characters of token
+					maskedToken = token[:4] + "..." + token[len(token)-4:]
+				}
+				maskedHeaders.Set(k, "Bearer "+maskedToken)
+			} else {
+				maskedHeaders.Set(k, "Bearer ***masked***")
+			}
+		} else {
+			maskedHeaders[k] = v
+		}
+	}
+	debugf("Request headers: %+v", maskedHeaders)
 	debugf("Request payload: %s", string(jsonData))
 	
 	// Send request

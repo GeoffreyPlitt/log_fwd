@@ -154,7 +154,7 @@ func TestSendHTTPRequest(t *testing.T) {
 	
 	// Create a test log entry
 	logEntry := LogEntry{
-		Timestamp: time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		Timestamp: time.Now().UTC().Format(TimestampFormat),
 		Message:   "Test log message",
 	}
 	
@@ -189,7 +189,7 @@ func TestSendHTTPRequestErrors(t *testing.T) {
 		}
 		
 		logEntry := LogEntry{
-			Timestamp: time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+			Timestamp: time.Now().UTC().Format(TimestampFormat),
 			Message:   "Test log message",
 		}
 		
@@ -219,7 +219,7 @@ func TestSendHTTPRequestErrors(t *testing.T) {
 		}
 		
 		logEntry := LogEntry{
-			Timestamp: time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+			Timestamp: time.Now().UTC().Format(TimestampFormat),
 			Message:   "Test log message",
 		}
 		

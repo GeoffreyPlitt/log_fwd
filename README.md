@@ -73,7 +73,7 @@ some_program | ./papertrail_fwd \
 
 ```bash
 # Forward application logs to BetterStack Logs
-tail -f /var/log/application.log | ./papertrail_fwd -host s8676456.eu-nbg-2.betterstackdata.com -token eghsghhsgwwghwtrhwrthrt
+tail -f /var/log/application.log | ./papertrail_fwd -host logs.example.com -token YOUR_API_TOKEN
 ```
 
 ## Development
