@@ -146,7 +146,13 @@ func TestSendHTTPRequest(t *testing.T) {
 	// Create a client that points to our test server
 	client := &HTTPClient{
 		config: &Config{
-			AuthToken: "test-token",
+			AuthToken:      "test-token",
+			RequestTimeout: 5 * time.Second,
+			HTTPTimeout:    10 * time.Second,
+			MaxRetries:     3,
+			BatchSize:      10,
+			EnableBatching: false,
+			CompressLogs:   false,
 		},
 		client: server.Client(),
 		url:    server.URL,
@@ -182,7 +188,13 @@ func TestSendHTTPRequestErrors(t *testing.T) {
 		
 		client := &HTTPClient{
 			config: &Config{
-				AuthToken: "test-token",
+				AuthToken:      "test-token",
+				RequestTimeout: 1 * time.Second,
+				HTTPTimeout:    2 * time.Second,
+				MaxRetries:     1,
+				BatchSize:      10,
+				EnableBatching: false,
+				CompressLogs:   false,
 			},
 			client: server.Client(),
 			url:    server.URL,
@@ -212,7 +224,13 @@ func TestSendHTTPRequestErrors(t *testing.T) {
 	t.Run("invalid URL", func(t *testing.T) {
 		client := &HTTPClient{
 			config: &Config{
-				AuthToken: "test-token",
+				AuthToken:      "test-token",
+				RequestTimeout: 1 * time.Second,
+				HTTPTimeout:    2 * time.Second,
+				MaxRetries:     1,
+				BatchSize:      10,
+				EnableBatching: false,
+				CompressLogs:   false,
 			},
 			client: http.DefaultClient,
 			url:    "http://invalid-test-url-that-does-not-exist",
@@ -250,9 +268,15 @@ func TestSendLogsContextCancellation(t *testing.T) {
 	// Create a client
 	client := &HTTPClient{
 		config: &Config{
-			Host:      "example.com",
-			Port:      443,
-			AuthToken: "test-token",
+			Host:          "example.com",
+			Port:          443,
+			AuthToken:     "test-token",
+			RequestTimeout: 1 * time.Second,
+			HTTPTimeout:    2 * time.Second,
+			MaxRetries:     1,
+			BatchSize:      10,
+			EnableBatching: false,
+			CompressLogs:   false,
 		},
 		client: server.Client(),
 		url:    server.URL,
@@ -286,9 +310,15 @@ func TestSendLogsWithData(t *testing.T) {
 	// Create a client
 	client := &HTTPClient{
 		config: &Config{
-			Host:      "example.com",
-			Port:      443,
-			AuthToken: "test-token",
+			Host:          "example.com",
+			Port:          443,
+			AuthToken:     "test-token",
+			RequestTimeout: 1 * time.Second,
+			HTTPTimeout:    2 * time.Second,
+			MaxRetries:     1,
+			BatchSize:      10,
+			EnableBatching: false,
+			CompressLogs:   false,
 		},
 		client: server.Client(),
 		url:    server.URL,

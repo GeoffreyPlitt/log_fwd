@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"strings"
@@ -34,6 +36,9 @@ type LogEntry struct {
 	Message   string `json:"message"`
 }
 
+// LogBatch represents a batch of log entries
+type LogBatch []LogEntry
+
 // NewClient creates a new HTTP API client
 func NewClient(cfg *Config) (*HTTPClient, error) {
 	// Create HTTP transport with proper TLS config
@@ -45,7 +50,12 @@ func NewClient(cfg *Config) (*HTTPClient, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to load TLS config: %w", err)
 		}
-		transport = &http.Transport{TLSClientConfig: tlsConfig}
+		transport = &http.Transport{
+			TLSClientConfig: tlsConfig,
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 20,
+			IdleConnTimeout:     90 * time.Second,
+		}
 	} else {
 		// Use system root certificates
 		debugf("Using system root certificates")
@@ -54,12 +64,15 @@ func NewClient(cfg *Config) (*HTTPClient, error) {
 				MinVersion: tls.VersionTLS12,
 				InsecureSkipVerify: cfg.InsecureSSL,
 			},
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 20,
+			IdleConnTimeout:     90 * time.Second,
 		}
 	}
 
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   30 * time.Second,
+		Timeout:   cfg.HTTPTimeout,
 	}
 
 	// Build URL from host and port
@@ -69,6 +82,9 @@ func NewClient(cfg *Config) (*HTTPClient, error) {
 	}
 	
 	debugf("Configured HTTP API endpoint: %s", url)
+	debugf("HTTP client timeout: %s, Request timeout: %s", cfg.HTTPTimeout, cfg.RequestTimeout)
+	debugf("Batching enabled: %v, Batch size: %d", cfg.EnableBatching, cfg.BatchSize)
+	debugf("Max retries: %d, Compression enabled: %v", cfg.MaxRetries, cfg.CompressLogs)
 
 	return &HTTPClient{
 		config:      cfg,
@@ -86,9 +102,33 @@ type Buffer interface {
 	GetSize() int64
 }
 
+// calculateBackoff calculates retry backoff with jitter
+func calculateBackoff(retryCount int) time.Duration {
+	if retryCount <= 0 {
+		return 100 * time.Millisecond
+	}
+	
+	// Exponential backoff with jitter
+	backoff := time.Duration(1<<uint(retryCount-1)) * time.Second
+	
+	// Maximum backoff of 30 seconds
+	if backoff > 30*time.Second {
+		backoff = 30 * time.Second
+	}
+	
+	// Add jitter (±20%)
+	jitter := rand.Float64()*0.4 - 0.2 // -20% to +20%
+	backoff = time.Duration(float64(backoff) * (1 + jitter))
+	
+	return backoff
+}
+
 // SendLogs reads from buffer and sends to the HTTP API
 func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan struct{}) {
 	debugf("SendLogs started for HTTP API endpoint %s", c.url)
+	
+	// Initialize random number generator for jitter
+	rand.Seed(time.Now().UnixNano())
 	
 	// Log the settings we're using
 	fmt.Fprintf(os.Stderr, "Starting log forwarding to %s\n", c.url)
@@ -96,10 +136,27 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 		fmt.Fprintf(os.Stderr, "Warning: TLS certificate verification is disabled\n")
 	}
 	
+	// Log batching status
+	if c.config.EnableBatching {
+		fmt.Fprintf(os.Stderr, "Log batching enabled (batch size: %d)\n", c.config.BatchSize)
+	} else {
+		fmt.Fprintf(os.Stderr, "Log batching disabled (sending one log at a time)\n")
+	}
+	
 	// Track successful and failed requests
-	var successCount, failCount int64
+	var successCount, failCount, batchCount int64
 	lastStatusReport := time.Now()
 	reportInterval := 1 * time.Minute
+	
+	// Create a request queue so we can process messages
+	// and only mark them as processed after success
+	type queuedMessage struct {
+		message string
+		retries int
+		lastAttempt time.Time
+	}
+	
+	requestQueue := make([]queuedMessage, 0, 1000)
 	
 	for {
 		// Check if we should exit
@@ -112,15 +169,58 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 		
 		// Periodically report statistics
 		if time.Since(lastStatusReport) >= reportInterval {
-			fmt.Fprintf(os.Stderr, "Log forwarding stats: %d successful, %d failed\n", 
-				successCount, failCount)
+			if batchCount > 0 {
+				fmt.Fprintf(os.Stderr, "Log forwarding stats: %d successful, %d failed, %d batches sent\n", 
+					successCount, failCount, batchCount)
+			} else {
+				fmt.Fprintf(os.Stderr, "Log forwarding stats: %d successful, %d failed\n", 
+					successCount, failCount)
+			}
 			lastStatusReport = time.Now()
 		}
 		
-		// Check for data in buffer
-		if !buffer.HasData() {
-			debugf("No data in buffer, waiting for new logs")
-			// Wait for new logs signal or timeout
+		// If the queue is empty, check for more data in the buffer
+		if len(requestQueue) == 0 && buffer.HasData() {
+			debugf("Reading more logs from buffer (size: %d bytes)", buffer.GetSize())
+			data, err := buffer.Read(ReadChunkSize)
+			if err != nil && err != io.EOF {
+				fmt.Fprintf(os.Stderr, "Error reading from buffer: %v\n", err)
+				debugf("Error reading from buffer: %v", err)
+				time.Sleep(1 * time.Second)
+				
+				// Try signal and continue
+				select {
+				case <-signal:
+					// Got a signal, continue processing
+				default:
+					// No signal, just sleep
+					time.Sleep(100 * time.Millisecond)
+				}
+				continue
+			}
+			
+			if len(data) > 0 {
+				debugf("Processing %d bytes of log data", len(data))
+				
+				// Split data into lines and queue them for processing
+				lines := strings.Split(string(data), "\n")
+				for _, line := range lines {
+					if line != "" {
+						requestQueue = append(requestQueue, queuedMessage{
+							message: line,
+							retries: 0,
+							lastAttempt: time.Time{}, // Zero time (never attempted)
+						})
+					}
+				}
+				
+				debugf("Queued %d messages for processing", len(requestQueue))
+			}
+		}
+		
+		// If there's nothing to do, wait for signal or timeout
+		if len(requestQueue) == 0 && !buffer.HasData() {
+			debugf("No data in buffer or request queue, waiting for new logs")
 			select {
 			case <-signal:
 				debugf("Received signal that new logs are available")
@@ -134,33 +234,131 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 			}
 			continue
 		}
-
-		// Read log data from buffer
-		debugf("Reading logs from buffer (size: %d bytes)", buffer.GetSize())
-		data, err := buffer.Read(ReadChunkSize)
-		if err != nil && err != io.EOF {
-			fmt.Fprintf(os.Stderr, "Error reading from buffer: %v\n", err)
-			debugf("Error reading from buffer: %v", err)
-			time.Sleep(1 * time.Second)
-			continue
-		}
-
-		if len(data) > 0 {
-			debugf("Processing %d bytes of log data", len(data))
-			
-			// Parse and convert to JSON for HTTP API
-			// Each line is a separate log entry
-			lines := strings.Split(string(data), "\n")
-			for _, line := range lines {
-				if line == "" {
-					continue
+		
+		// Process messages from the queue (as a batch if enabled)
+		if len(requestQueue) > 0 {
+			// Determine if we should process in batch or single mode
+			if c.config.EnableBatching && len(requestQueue) >= c.config.BatchSize {
+				// Batch processing
+				processBatch := true
+				batchSize := c.config.BatchSize
+				if batchSize > len(requestQueue) {
+					batchSize = len(requestQueue)
+				}
+				
+				// Check if all messages in batch are ready for processing
+				for i := 0; i < batchSize; i++ {
+					// If any message is on backoff, skip processing this batch
+					if !requestQueue[i].lastAttempt.IsZero() && 
+					   time.Since(requestQueue[i].lastAttempt) < calculateBackoff(requestQueue[i].retries) {
+						processBatch = false
+						break
+					}
+				}
+				
+				if processBatch {
+					// Create a batch of log entries
+					batch := make(LogBatch, 0, batchSize)
+					
+					// Process each message in the batch
+					for i := 0; i < batchSize; i++ {
+						// Extract message and create log entry
+						message := extractMessage(requestQueue[i].message)
+						logEntry := LogEntry{
+							Timestamp: time.Now().UTC().Format(TimestampFormat),
+							Message:   message,
+						}
+						batch = append(batch, logEntry)
+					}
+					
+					// Send the batch
+					statusCode, err := c.sendBatchedLogs(ctx, batch)
+					
+					if err != nil {
+						// If we get an error, increment retry count for all messages in batch
+						fmt.Fprintf(os.Stderr, "Failed to send batch of %d logs: %v\n", batchSize, err)
+						debugf("Failed to send batch: %v", err)
+						
+						// Update retry count and last attempt time for each message
+						now := time.Now()
+						for i := 0; i < batchSize; i++ {
+							msg := requestQueue[i]
+							msg.retries++
+							msg.lastAttempt = now
+							
+							// If max retries reached, mark as failed
+							if msg.retries > c.config.MaxRetries {
+								failCount++
+								// Mark for removal by setting retry count beyond max
+								msg.retries = c.config.MaxRetries + 1
+							}
+							
+							requestQueue[i] = msg
+						}
+						
+						// Remove any messages that have exceeded max retries
+						newQueue := make([]queuedMessage, 0, len(requestQueue))
+						for _, msg := range requestQueue {
+							if msg.retries <= c.config.MaxRetries {
+								newQueue = append(newQueue, msg)
+							} else {
+								fmt.Fprintf(os.Stderr, "Giving up on message after %d attempts\n", c.config.MaxRetries)
+							}
+						}
+						requestQueue = newQueue
+						
+						// Sleep for a bit before continuing
+						time.Sleep(100 * time.Millisecond)
+						continue
+					}
+					
+					// Record success
+					successCount += int64(batchSize)
+					batchCount++
+					
+					// Log success
+					fmt.Fprintf(os.Stderr, "Successfully sent batch of %d log entries (HTTP %d)\n", 
+						batchSize, statusCode)
+					debugf("Successfully sent batch with status code: %d", statusCode)
+					
+					// Remove the processed messages from the queue
+					if batchSize == len(requestQueue) {
+						requestQueue = requestQueue[:0] // Clear the queue
+					} else {
+						requestQueue = requestQueue[batchSize:]
+					}
+					
+					// Short pause between requests to avoid flooding
+					time.Sleep(50 * time.Millisecond)
+				} else {
+					// Some messages are on backoff, wait a bit and try again
+					time.Sleep(50 * time.Millisecond)
+				}
+			} else {
+				// Single message processing
+				msg := requestQueue[0]
+				
+				// Check if this message is on backoff
+				if !msg.lastAttempt.IsZero() {
+					backoff := calculateBackoff(msg.retries)
+					elapsed := time.Since(msg.lastAttempt)
+					
+					if elapsed < backoff {
+						// Not ready to retry yet
+						waitTime := backoff - elapsed
+						debugf("Message on backoff, waiting %v before retry", waitTime)
+						
+						// Short sleep and continue
+						time.Sleep(50 * time.Millisecond)
+						continue
+					}
 				}
 				
 				// Log the actual content being sent
-				logData([]byte(line))
+				logData([]byte(msg.message))
 				
 				// Extract the actual message from the syslog format if present
-				message := extractMessage(line)
+				message := extractMessage(msg.message)
 				
 				// Create JSON payload
 				timestamp := time.Now().UTC().Format(TimestampFormat)
@@ -174,83 +372,97 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 					fmt.Fprintf(os.Stderr, "Error creating JSON payload: %v\n", err)
 					debugf("Error creating JSON payload: %v", err)
 					failCount++
+					
+					// Remove this message from the queue since it can't be processed
+					requestQueue = requestQueue[1:]
 					continue
 				}
 				
 				// Send HTTP request
 				statusCode, err := c.sendHTTPRequest(ctx, jsonData)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "Failed to send log: %v\n", err)
+					// If we get an error, increment retry count
+					msg.retries++
+					msg.lastAttempt = time.Now()
+					
+					fmt.Fprintf(os.Stderr, "Failed to send log (attempt %d): %v\n", 
+						msg.retries, err)
 					debugf("Failed to send log: %v", err)
-					failCount++
-					// Wait a bit before retrying
-					time.Sleep(1 * time.Second)
+					
+					if msg.retries > c.config.MaxRetries {
+						// Give up after max retries and remove from queue
+						failCount++
+						fmt.Fprintf(os.Stderr, "Giving up on message after %d attempts\n", msg.retries)
+						requestQueue = requestQueue[1:]
+					} else {
+						// Put updated retry count back
+						requestQueue[0] = msg
+					}
+					
+					// Let the next loop iteration handle backoff
 					continue
 				}
 				
 				// Record success
 				successCount++
-				// Log success to stderr (important for stdout) with status code
+				
+				// Log success to stderr with status code
 				fmt.Fprintf(os.Stderr, "Successfully sent log entry (HTTP %d)\n", statusCode)
 				debugf("Successfully sent log entry with status code: %d", statusCode)
+				
+				// Remove the processed message from the queue
+				requestQueue = requestQueue[1:]
+				
+				// Short pause between requests to avoid flooding
+				time.Sleep(50 * time.Millisecond)
 			}
-		} else {
-			// No data, short pause
-			debugf("No data read from buffer, short pause")
-			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
 
-// sendHTTPRequest sends a single log entry via HTTP POST and returns the status code
+// sendHTTPRequest sends log entries via HTTP POST and returns the status code
 func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) (int, error) {
 	// Create request with timeout context
-	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	reqCtx, cancel := context.WithTimeout(ctx, c.config.RequestTimeout)
 	defer cancel()
 	
+	// Just log that we're sending a request
 	debugf("Sending HTTP request to %s", c.url)
 	
-	// Log complete curl equivalent for easier debugging
-	// Escape single quotes in JSON payload for curl command
-	escapedJSON := strings.ReplaceAll(string(jsonData), "'", "'\\''")
+	// Create request body, with optional compression
+	var requestBody io.Reader = bytes.NewBuffer(jsonData)
+	contentType := "application/json"
 	
-	// Add auth token mask for debugging
-	authPart := "-H 'Authorization: Bearer ****'"
-	if c.authToken != "" {
-		// Show first few chars for debugging
-		tokenPart := "****"
-		if len(c.authToken) >= 4 {
-			tokenPart = c.authToken[:4] + "..." 
+	if c.config.CompressLogs {
+		var compressedBuffer bytes.Buffer
+		gzipWriter := gzip.NewWriter(&compressedBuffer)
+		if _, err := gzipWriter.Write(jsonData); err != nil {
+			return 0, fmt.Errorf("error compressing data: %w", err)
 		}
-		authPart = fmt.Sprintf("-H 'Authorization: Bearer %s'", tokenPart)
+		if err := gzipWriter.Close(); err != nil {
+			return 0, fmt.Errorf("error closing gzip writer: %w", err)
+		}
+		requestBody = &compressedBuffer
+		contentType = "application/json+gzip"
+		debugf("Compressed request payload from %d to %d bytes", len(jsonData), compressedBuffer.Len())
 	}
 	
-	// Format curl command with all details
-	curlCmd := fmt.Sprintf("curl -v -X POST -H 'Content-Type: application/json' %s -d '%s' %s", 
-		authPart, escapedJSON, c.url)
-	
-	// Always print equivalent curl command to stderr for easier debugging and reproduction
-	fmt.Fprintf(os.Stderr, "\nEquivalent curl command for debugging:\n%s\n\n", curlCmd)
-	debugf("Sending HTTP request to %s", c.url)
-	
-	req, err := http.NewRequestWithContext(reqCtx, "POST", c.url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(reqCtx, "POST", c.url, requestBody)
 	if err != nil {
 		return 0, fmt.Errorf("error creating request: %w", err)
 	}
 	
 	// Set headers
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
+	if c.config.CompressLogs {
+		req.Header.Set("Content-Encoding", "gzip")
+	}
+	
 	if c.authToken != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.authToken))
-		// Log HTTP method, URL and request size
-		tokenPrefix := ""
-		if len(c.authToken) >= 4 {
-			tokenPrefix = c.authToken[:4]
-		} else {
-			tokenPrefix = c.authToken // Use all if token is shorter than 4 chars
-		}
-		fmt.Fprintf(os.Stderr, "HTTP Request: %s %s (Auth: Bearer %s..., %d bytes)\n", 
-			req.Method, req.URL, tokenPrefix, len(jsonData))
+		// Log HTTP method, URL and request size - but don't log token details
+		fmt.Fprintf(os.Stderr, "HTTP Request: %s %s (Auth: [REDACTED], %d bytes)\n", 
+			req.Method, req.URL, len(jsonData))
 	} else {
 		fmt.Fprintf(os.Stderr, "HTTP Request: %s %s (NO AUTH TOKEN, %d bytes)\n", 
 			req.Method, req.URL, len(jsonData))
@@ -261,25 +473,24 @@ func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) (int,
 	maskedHeaders := make(http.Header)
 	for k, v := range req.Header {
 		if k == "Authorization" && len(v) > 0 {
-			// Mask token but show first/last few chars
-			authVal := v[0]
-			if len(authVal) > 15 && strings.HasPrefix(authVal, "Bearer ") {
-				token := authVal[7:] // Remove "Bearer " prefix
-				maskedToken := token
-				if len(token) > 10 {
-					// Show first 4 and last 4 characters of token
-					maskedToken = token[:4] + "..." + token[len(token)-4:]
-				}
-				maskedHeaders.Set(k, "Bearer "+maskedToken)
-			} else {
-				maskedHeaders.Set(k, "Bearer ***masked***")
-			}
+			// Completely mask the token
+			maskedHeaders.Set(k, "Bearer [REDACTED]")
 		} else {
 			maskedHeaders[k] = v
 		}
 	}
 	debugf("Request headers: %+v", maskedHeaders)
-	debugf("Request payload: %s", string(jsonData))
+	
+	// Only log payload details in verbose mode
+	if isVerbose {
+		// Show sample of payload
+		sampleSize := 500
+		if len(jsonData) > sampleSize {
+			debugf("Request payload (first %d bytes): %s...", sampleSize, string(jsonData[:sampleSize]))
+		} else {
+			debugf("Request payload: %s", string(jsonData))
+		}
+	}
 	
 	// Send request
 	resp, err := c.client.Do(req)
@@ -333,6 +544,18 @@ func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) (int,
 	debugf("HTTP request succeeded with status %d", statusCode)
 	
 	return statusCode, nil
+}
+
+// sendBatchedLogs sends multiple log entries in a single request
+func (c *HTTPClient) sendBatchedLogs(ctx context.Context, batch LogBatch) (int, error) {
+	// Marshal the batch to JSON
+	jsonData, err := json.Marshal(batch)
+	if err != nil {
+		return 0, fmt.Errorf("error creating JSON batch payload: %w", err)
+	}
+	
+	debugf("Sending batch of %d log entries (%d bytes)", len(batch), len(jsonData))
+	return c.sendHTTPRequest(ctx, jsonData)
 }
 
 // extractMessage extracts the actual message from a syslog formatted line

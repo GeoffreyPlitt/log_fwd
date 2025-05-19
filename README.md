@@ -12,9 +12,12 @@ This program forwards logs to log management services using HTTP APIs. It reads 
 
 - Disk-based circular buffer for log persistence
 - Automatic buffer growth as needed (up to configured maximum)
-- Reconnection with exponential backoff
+- Reconnection with exponential backoff and jitter
 - HTTP API integration with JSON payload formatting
-- Bearer token authentication
+- Log batching for improved throughput
+- Optional compression (gzip) for efficient transport
+- Bearer token authentication with secure token handling
+- Configurable retries and timeouts
 - Clean shutdown on signal interrupts
 - Efficient buffer management for large volumes of logs
 - Panic recovery
@@ -66,14 +69,44 @@ some_program | ./papertrail_fwd \
 | `-maxsize` | Maximum buffer size in bytes | 100MB |
 | `-token` | Authorization token | (required) |
 | `-k` | Allow insecure SSL connections | false |
+| `-batch` | Number of log entries to batch in a single request | 10 |
+| `-enable-batch` | Enable log batching | true |
+| `-retries` | Maximum number of retries for failed requests | 3 |
+| `-timeout` | Overall HTTP client timeout | 30s |
+| `-req-timeout` | Per-request timeout | 10s |
+| `-compress` | Compress logs using gzip before sending | false |
+| `-v` | Enable verbose debug logging | false |
 
-## Example
+## Examples
 
-### BetterStack Logs
+### Basic Usage
 
 ```bash
 # Forward application logs to BetterStack Logs
 tail -f /var/log/application.log | ./papertrail_fwd -host logs.example.com -token YOUR_API_TOKEN
+```
+
+### Advanced Usage
+
+```bash
+# Forward logs with batching, compression, and custom retry settings
+tail -f /var/log/application.log | ./papertrail_fwd \
+  -host logs.example.com \
+  -token YOUR_API_TOKEN \
+  -batch 20 \
+  -retries 5 \
+  -compress \
+  -timeout 60s \
+  -req-timeout 15s
+
+# High-throughput configuration for reliable delivery
+tail -f /var/log/high-volume.log | ./papertrail_fwd \
+  -host logs.example.com \
+  -token YOUR_API_TOKEN \
+  -batch 50 \
+  -compress \
+  -buffer "/var/log/high_volume_buffer.log" \
+  -maxsize 1073741824  # 1GB buffer
 ```
 
 ## Development

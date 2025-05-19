@@ -19,9 +19,15 @@ func TestSendLogsNoDataPath(t *testing.T) {
 	// Create a client
 	client := &HTTPClient{
 		config: &Config{
-			Host:      "example.com",
-			Port:      443,
-			AuthToken: "test-token",
+			Host:          "example.com",
+			Port:          443,
+			AuthToken:     "test-token",
+			RequestTimeout: 1 * time.Second,
+			HTTPTimeout:    2 * time.Second,
+			MaxRetries:     1,
+			BatchSize:      10,
+			EnableBatching: false,
+			CompressLogs:   false,
 		},
 		client: server.Client(),
 		url:    server.URL,
@@ -51,9 +57,15 @@ func TestSendLogsSignalPath(t *testing.T) {
 	// Create a client
 	client := &HTTPClient{
 		config: &Config{
-			Host:      "example.com",
-			Port:      443,
-			AuthToken: "test-token",
+			Host:          "example.com",
+			Port:          443,
+			AuthToken:     "test-token",
+			RequestTimeout: 1 * time.Second,
+			HTTPTimeout:    2 * time.Second,
+			MaxRetries:     1,
+			BatchSize:      10,
+			EnableBatching: false,
+			CompressLogs:   false,
 		},
 		client: server.Client(),
 		url:    server.URL,
@@ -86,9 +98,15 @@ func TestSendLogsErrorHandling(t *testing.T) {
 	// Create a client
 	client := &HTTPClient{
 		config: &Config{
-			Host:      "example.com",
-			Port:      443,
-			AuthToken: "test-token",
+			Host:          "example.com",
+			Port:          443,
+			AuthToken:     "test-token",
+			RequestTimeout: 1 * time.Second,
+			HTTPTimeout:    2 * time.Second,
+			MaxRetries:     1,
+			BatchSize:      10,
+			EnableBatching: false,
+			CompressLogs:   false,
 		},
 		client: server.Client(),
 		url:    server.URL,
