@@ -1,3 +1,3 @@
 module github.com/yourusername/papertrail_fwd
 
-go 1.21
+go 1.24

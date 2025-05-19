@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"time"
 )
@@ -13,6 +15,9 @@ const (
 	InitialBufferSize = 64 * 1024          // Start with 64KB
 )
 
+// ErrInvalidConfig is returned when required configuration is missing
+var ErrInvalidConfig = errors.New("invalid configuration")
+
 // Config holds all program configuration
 type Config struct {
 	CertFile    string
@@ -21,6 +26,20 @@ type Config struct {
 	ProgramName string
 	BufferPath  string
 	MaxSize     int64
+}
+
+// Validate checks if the config has all required fields
+func (c *Config) Validate() error {
+	if c.CertFile == "" {
+		return fmt.Errorf("%w: certificate path is required", ErrInvalidConfig)
+	}
+	if c.Host == "" {
+		return fmt.Errorf("%w: host is required", ErrInvalidConfig)
+	}
+	if c.Port <= 0 {
+		return fmt.Errorf("%w: valid port is required", ErrInvalidConfig)
+	}
+	return nil
 }
 
 // LogFatalFunc defines the signature for a fatal logging function
@@ -47,8 +66,8 @@ func ParseFlags() *Config {
 	config.MaxSize = *maxSize
 	
 	// Validate required flags
-	if config.CertFile == "" || config.Host == "" || config.Port == 0 {
-		CurrentLogFatal("Certificate path, host, and port are required")
+	if err := config.Validate(); err != nil {
+		CurrentLogFatal(err)
 	}
 	
 	return config

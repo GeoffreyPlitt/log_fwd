@@ -24,20 +24,20 @@ func NewBuffer(path string, maxSize int64) (*CircularBuffer, error) {
 	// Create buffer directory if it doesn't exist
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create buffer directory: %v", err)
+		return nil, fmt.Errorf("failed to create buffer directory: %w", err)
 	}
 
 	// Open or create the buffer file
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open buffer file: %v", err)
+		return nil, fmt.Errorf("failed to open buffer file: %w", err)
 	}
 
 	// Get current file size
 	info, err := file.Stat()
 	if err != nil {
 		file.Close()
-		return nil, fmt.Errorf("failed to stat buffer file: %v", err)
+		return nil, fmt.Errorf("failed to stat buffer file: %w", err)
 	}
 
 	fileSize := info.Size()
@@ -46,7 +46,7 @@ func NewBuffer(path string, maxSize int64) (*CircularBuffer, error) {
 	if fileSize == 0 {
 		if err := file.Truncate(InitialBufferSize); err != nil {
 			file.Close()
-			return nil, fmt.Errorf("failed to initialize buffer file: %v", err)
+			return nil, fmt.Errorf("failed to initialize buffer file: %w", err)
 		}
 		fileSize = InitialBufferSize
 	}
@@ -89,7 +89,7 @@ func (cb *CircularBuffer) Write(data []byte) (int, error) {
 		} else if newSize >= requiredSpace {
 			// Grow the file
 			if err := cb.file.Truncate(newSize); err != nil {
-				return 0, fmt.Errorf("failed to grow buffer: %v", err)
+				return 0, fmt.Errorf("failed to grow buffer: %w", err)
 			}
 			cb.fileSize = newSize
 		}

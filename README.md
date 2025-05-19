@@ -1,8 +1,21 @@
 # papertrail_fwd
 
-This program forwards logs to Papertrail (a log management service). It reads data from stdin, formats it as syslog messages, stores them in a circular buffer file, and sends them to Papertrail over TLS. It handles reconnections, buffering during disconnections, and supports command-line arguments for configuration.
+This program forwards logs to Papertrail (a log management service). It reads data from stdin, formats it as RFC5424 syslog messages, stores them in a circular buffer file, and sends them to Papertrail over TLS. It handles reconnections, buffering during disconnections, and supports command-line arguments for configuration.
+
+## Features
+
+- Disk-based circular buffer for log persistence
+- Automatic buffer growth as needed (up to configured maximum)
+- Reconnection with exponential backoff
+- Properly formatted RFC5424 syslog messages
+- Clean shutdown on signal interrupts
+- Efficient buffer management for large volumes of logs
+- Panic recovery
+- Modern Go 1.24 standards and error handling
 
 ## Installation
+
+Requires Go 1.24 or higher.
 
 ```bash
 go install github.com/yourusername/papertrail_fwd@latest
@@ -50,27 +63,26 @@ some_program | ./papertrail_fwd \
 tail -f /var/log/application.log | ./papertrail_fwd -cert /etc/papertrail-bundle.pem -host logs.papertrailapp.com -port 12345 -program "my-application"
 ```
 
-## Features
-
-- Disk-based circular buffer for log persistence
-- Automatic buffer growth as needed (up to configured maximum)
-- Reconnection with exponential backoff
-- Properly formatted syslog messages
-- Clean shutdown on signal interrupts
-- Efficient buffer management for large volumes of logs
-
 ## Testing
 
 Run the tests with:
 
 ```bash
-go test -v
+go test -v ./...
 ```
 
 For test coverage:
 
 ```bash
-go test -v -cover
+go test -cover ./...
+```
+
+## Code Linting
+
+Run Go's standard code linting:
+
+```bash
+go vet ./...
 ```
 
 ## License

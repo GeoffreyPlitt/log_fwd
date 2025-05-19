@@ -6,8 +6,8 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
+	"os"
 	"time"
 )
 
@@ -24,7 +24,15 @@ type StandardTLSDialer struct {
 
 // Dial establishes a TLS connection
 func (d *StandardTLSDialer) Dial(ctx context.Context) (*tls.Conn, error) {
-	return tls.Dial("tcp", d.addr, d.tlsConfig)
+	var dialer tls.Dialer
+	dialer.Config = d.tlsConfig
+	
+	conn, err := dialer.DialContext(ctx, "tcp", d.addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return conn.(*tls.Conn), nil
 }
 
 // PapertrailClient handles sending logs to Papertrail
@@ -39,7 +47,7 @@ func NewClient(cfg *Config) (*PapertrailClient, error) {
 	// Load TLS config
 	tlsConfig, err := loadTLSConfig(cfg.CertFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load TLS config: %v", err)
+		return nil, fmt.Errorf("failed to load TLS config: %w", err)
 	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
@@ -151,7 +159,7 @@ func (c *PapertrailClient) connectWithRetry(ctx context.Context) (*tls.Conn, err
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("context canceled during connection retry")
+			return nil, fmt.Errorf("context canceled during connection retry: %w", ctx.Err())
 		case <-time.After(retryDelay):
 			// Try to connect
 			conn, err := c.dialer.Dial(ctx)
@@ -173,9 +181,9 @@ func (c *PapertrailClient) connectWithRetry(ctx context.Context) (*tls.Conn, err
 
 // loadTLSConfig loads certificate and prepares TLS configuration
 func loadTLSConfig(certFile string) (*tls.Config, error) {
-	caCert, err := ioutil.ReadFile(certFile)
+	caCert, err := os.ReadFile(certFile)
 	if err != nil {
-		return nil, fmt.Errorf("error loading certificate: %v", err)
+		return nil, fmt.Errorf("error loading certificate: %w", err)
 	}
 
 	caCertPool := x509.NewCertPool()
@@ -186,5 +194,6 @@ func loadTLSConfig(certFile string) (*tls.Config, error) {
 	return &tls.Config{
 		RootCAs:            caCertPool,
 		InsecureSkipVerify: false,
+		MinVersion:         tls.VersionTLS12,
 	}, nil
 }

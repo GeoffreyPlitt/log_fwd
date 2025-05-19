@@ -1,10 +1,76 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"os"
 	"testing"
 )
+
+func TestConfigValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  Config
+		wantErr bool
+	}{
+		{
+			name: "valid config",
+			config: Config{
+				CertFile: "cert.pem",
+				Host:     "example.com",
+				Port:     12345,
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing cert",
+			config: Config{
+				Host: "example.com",
+				Port: 12345,
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing host",
+			config: Config{
+				CertFile: "cert.pem",
+				Port:     12345,
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing port",
+			config: Config{
+				CertFile: "cert.pem",
+				Host:     "example.com",
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid port",
+			config: Config{
+				CertFile: "cert.pem",
+				Host:     "example.com",
+				Port:     -1,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Config.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil && tt.wantErr {
+				if !errors.Is(err, ErrInvalidConfig) {
+					t.Errorf("Config.Validate() error = %v, want error type %v", err, ErrInvalidConfig)
+				}
+			}
+		})
+	}
+}
 
 func TestParseFlags(t *testing.T) {
 	// Save original arguments and fatal function
