@@ -15,7 +15,7 @@ build:
 
 # Install the application
 install:
-	go install ${LDFLAGS}`
+	go install ${LDFLAGS}
 
 # Run all tests
 test:
