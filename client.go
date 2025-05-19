@@ -16,6 +16,7 @@ type PapertrailClient struct {
 	config    *Config
 	tlsConfig *tls.Config
 	addr      string
+	dialFunc  func(ctx context.Context) (*tls.Conn, error) // Custom dialer for testing
 }
 
 // NewClient creates a new Papertrail client
@@ -32,6 +33,7 @@ func NewClient(cfg *Config) (*PapertrailClient, error) {
 		config:    cfg,
 		tlsConfig: tlsConfig,
 		addr:      addr,
+		dialFunc:  func(ctx context.Context) (*tls.Conn, error) { return tls.Dial("tcp", addr, tlsConfig) },
 	}, nil
 }
 
@@ -100,7 +102,7 @@ func (c *PapertrailClient) connectWithRetry(ctx context.Context) (*tls.Conn, err
 	log.Printf("Connecting to %s", c.addr)
 	
 	// Try to connect immediately first
-	conn, err := tls.Dial("tcp", c.addr, c.tlsConfig)
+	conn, err := c.dialFunc(ctx)
 	if err == nil {
 		return conn, nil
 	}
@@ -115,7 +117,7 @@ func (c *PapertrailClient) connectWithRetry(ctx context.Context) (*tls.Conn, err
 			return nil, fmt.Errorf("context canceled during connection retry")
 		case <-time.After(retryDelay):
 			// Try to connect
-			conn, err := tls.Dial("tcp", c.addr, c.tlsConfig)
+			conn, err := c.dialFunc(ctx)
 			if err == nil {
 				log.Printf("Connected to %s", c.addr)
 				return conn, nil

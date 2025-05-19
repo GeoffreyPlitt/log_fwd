@@ -50,6 +50,29 @@ some_program | ./papertrail_fwd \
 tail -f /var/log/application.log | ./papertrail_fwd -cert /etc/papertrail-bundle.pem -host logs.papertrailapp.com -port 12345 -program "my-application"
 ```
 
+## Features
+
+- Disk-based circular buffer for log persistence
+- Automatic buffer growth as needed (up to configured maximum)
+- Reconnection with exponential backoff
+- Properly formatted syslog messages
+- Clean shutdown on signal interrupts
+- Efficient buffer management for large volumes of logs
+
+## Testing
+
+Run the tests with:
+
+```bash
+go test -v
+```
+
+For test coverage:
+
+```bash
+go test -v -cover
+```
+
 ## License
 
 MIT

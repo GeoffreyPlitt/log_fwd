@@ -23,6 +23,9 @@ type Config struct {
 	MaxSize     int64
 }
 
+// Override log.Fatal for testing
+var logFatal = log.Fatal
+
 // ParseFlags parses command line flags and returns a config
 func ParseFlags() *Config {
 	config := &Config{}
@@ -39,7 +42,7 @@ func ParseFlags() *Config {
 	
 	// Validate required flags
 	if config.CertFile == "" || config.Host == "" || config.Port == 0 {
-		log.Fatal("Certificate path, host, and port are required")
+		logFatal("Certificate path, host, and port are required")
 	}
 	
 	return config
