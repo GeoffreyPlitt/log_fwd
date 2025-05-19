@@ -9,7 +9,7 @@ import (
 )
 
 // ProcessInput reads from stdin and writes to the buffer
-func ProcessInput(ctx context.Context, buffer *CircularBuffer, hostname, programName string, signal chan struct{}) {
+func ProcessInput(ctx context.Context, buffer *CircularBuffer, hostname, programName string, signal chan struct{}, cfg *Config) {
 	scanner := bufio.NewScanner(os.Stdin)
 	
 	// Increase the buffer size to handle large lines
@@ -30,6 +30,11 @@ func ProcessInput(ctx context.Context, buffer *CircularBuffer, hostname, program
 		
 		line := scanner.Text()
 		hasProcessedLogs = true
+		
+		// Echo the line to stdout if not in quiet mode
+		if !cfg.Quiet {
+			fmt.Println(line)
+		}
 		
 		// We'll just store the raw message and format it later in the HTTP client
 		// Just append a newline for readability in the buffer

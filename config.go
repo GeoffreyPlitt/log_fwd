@@ -32,6 +32,7 @@ type Config struct {
 	MaxSize         int64
 	ShowVersion     bool
 	Verbose         bool
+	Quiet           bool          // Suppress echoing logs to stdout
 	AuthToken       string
 	InsecureSSL     bool
 	BatchSize       int           // Number of log entries to batch in a single HTTP request
@@ -85,6 +86,8 @@ func ParseFlags() *Config {
 	compressLogs := flag.Bool("compress", false, "Compress logs using gzip before sending")
 	showVersion := flag.Bool("version", false, "Show version information and exit")
 	verbose := flag.Bool("v", false, "Enable verbose debug logging")
+	quiet := flag.Bool("q", false, "Quiet mode - don't echo log lines to stdout")
+	quietLong := flag.Bool("quiet", false, "Quiet mode - don't echo log lines to stdout")
 	insecureSSL := flag.Bool("k", false, "Allow insecure SSL connections (skip certificate validation)")
 	flag.Parse()
 
@@ -97,6 +100,8 @@ func ParseFlags() *Config {
 	config.CompressLogs = *compressLogs
 	config.ShowVersion = *showVersion
 	config.Verbose = *verbose
+	// Set quiet mode if either -q or --quiet is specified
+	config.Quiet = *quiet || *quietLong
 	config.InsecureSSL = *insecureSSL
 
 	// If version flag is set, we'll handle this separately in main() so skip validation

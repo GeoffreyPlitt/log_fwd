@@ -48,10 +48,11 @@ func TestProcessInput(t *testing.T) {
 	// Create a signaling channel
 	signal := make(chan struct{}, 1)
 
-	// Start processing in a goroutine
+	// Start processing in a goroutine with quiet mode on to avoid test output
 	done := make(chan struct{})
+	testConfig := &Config{Quiet: true}
 	go func() {
-		ProcessInput(ctx, buffer, testHostname, testProgram, signal)
+		ProcessInput(ctx, buffer, testHostname, testProgram, signal, testConfig)
 		close(done)
 	}()
 

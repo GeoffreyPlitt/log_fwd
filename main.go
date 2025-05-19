@@ -128,7 +128,7 @@ func main() {
 	go client.SendLogs(ctx, buffer, newLogs)
 
 	// Process stdin and write to buffer
-	ProcessInput(ctx, buffer, hostname, cfg.ProgramName, newLogs)
+	ProcessInput(ctx, buffer, hostname, cfg.ProgramName, newLogs, cfg)
 }
 
 // setupSignalHandling sets up handlers for OS signals

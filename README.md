@@ -76,14 +76,18 @@ some_program | ./papertrail_fwd \
 | `-req-timeout` | Per-request timeout | 10s |
 | `-compress` | Compress logs using gzip before sending | false |
 | `-v` | Enable verbose debug logging | false |
+| `-q`, `-quiet` | Quiet mode - don't echo log lines to stdout | false |
 
 ## Examples
 
 ### Basic Usage
 
 ```bash
-# Forward application logs to BetterStack Logs
+# Forward application logs to BetterStack Logs (logs will also be printed to stdout)
 tail -f /var/log/application.log | ./papertrail_fwd -host logs.example.com -token YOUR_API_TOKEN
+
+# Forward application logs in quiet mode (logs won't be echoed to stdout)
+tail -f /var/log/application.log | ./papertrail_fwd -q -host logs.example.com -token YOUR_API_TOKEN
 ```
 
 ### Advanced Usage
