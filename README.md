@@ -1,9 +1,9 @@
 # Log Forwarder
 
-[![Go Tests](https://github.com/GeoffreyPlitt/papertrail_fwd/actions/workflows/go.yml/badge.svg)](https://github.com/GeoffreyPlitt/papertrail_fwd/actions/workflows/go.yml)
-[![codecov](https://codecov.io/gh/GeoffreyPlitt/papertrail_fwd/branch/main/graph/badge.svg)](https://codecov.io/gh/GeoffreyPlitt/papertrail_fwd)
+[![Go Tests](https://github.com/GeoffreyPlitt/log_fwd/actions/workflows/go.yml/badge.svg)](https://github.com/GeoffreyPlitt/log_fwd/actions/workflows/go.yml)
+[![codecov](https://codecov.io/gh/GeoffreyPlitt/log_fwd/branch/main/graph/badge.svg)](https://codecov.io/gh/GeoffreyPlitt/log_fwd)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-blue.svg)](https://golang.org/doc/go1.24)
-[![Go Report Card](https://goreportcard.com/badge/github.com/GeoffreyPlitt/papertrail_fwd)](https://goreportcard.com/report/github.com/GeoffreyPlitt/papertrail_fwd)
+[![Go Report Card](https://goreportcard.com/badge/github.com/GeoffreyPlitt/log_fwd)](https://goreportcard.com/report/github.com/GeoffreyPlitt/log_fwd)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 This program forwards logs to log management services using HTTP APIs. It reads data from stdin, stores the logs in a circular buffer file, and sends them to the log service over HTTPS. It handles reconnections, buffering during disconnections, and supports various command-line arguments for configuration.
@@ -28,14 +28,14 @@ This program forwards logs to log management services using HTTP APIs. It reads 
 Requires Go 1.24 or higher.
 
 ```bash
-go install github.com/GeoffreyPlitt/papertrail_fwd@latest
+go install github.com/GeoffreyPlitt/log_fwd@latest
 ```
 
 Or clone and build:
 
 ```bash
-git clone https://github.com/GeoffreyPlitt/papertrail_fwd.git
-cd papertrail_fwd
+git clone https://github.com/GeoffreyPlitt/log_fwd.git
+cd log_fwd
 go build
 ```
 
@@ -43,10 +43,10 @@ go build
 
 ```bash
 # Basic usage
-some_program | ./papertrail_fwd -host logs.example.com -token YOUR_API_TOKEN
+some_program | ./log_fwd -host logs.example.com -token YOUR_API_TOKEN
 
 # With all options
-some_program | ./papertrail_fwd \
+some_program | ./log_fwd \
   -cert /path/to/cert-bundle.pem \
   -host logs.example.com \
   -port 443 \
@@ -65,7 +65,7 @@ some_program | ./papertrail_fwd \
 | `-host` | Log service host | (required) |
 | `-port` | Log service port | 443 |
 | `-program` | Program name for log identification | "custom-logger" |
-| `-buffer` | Path to buffer file | "papertrail_buffer.log" |
+| `-buffer` | Path to buffer file | "log_fwd_buffer.log" |
 | `-maxsize` | Maximum buffer size in bytes | 100MB |
 | `-token` | Authorization token | (required) |
 | `-k` | Allow insecure SSL connections | false |
@@ -84,17 +84,17 @@ some_program | ./papertrail_fwd \
 
 ```bash
 # Forward application logs to BetterStack Logs (logs will also be printed to stdout)
-tail -f /var/log/application.log | ./papertrail_fwd -host logs.example.com -token YOUR_API_TOKEN
+tail -f /var/log/application.log | ./log_fwd -host logs.example.com -token YOUR_API_TOKEN
 
 # Forward application logs in quiet mode (logs won't be echoed to stdout)
-tail -f /var/log/application.log | ./papertrail_fwd -q -host logs.example.com -token YOUR_API_TOKEN
+tail -f /var/log/application.log | ./log_fwd -q -host logs.example.com -token YOUR_API_TOKEN
 ```
 
 ### Advanced Usage
 
 ```bash
 # Forward logs with batching, compression, and custom retry settings
-tail -f /var/log/application.log | ./papertrail_fwd \
+tail -f /var/log/application.log | ./log_fwd \
   -host logs.example.com \
   -token YOUR_API_TOKEN \
   -batch 20 \
@@ -104,7 +104,7 @@ tail -f /var/log/application.log | ./papertrail_fwd \
   -req-timeout 15s
 
 # High-throughput configuration for reliable delivery
-tail -f /var/log/high-volume.log | ./papertrail_fwd \
+tail -f /var/log/high-volume.log | ./log_fwd \
   -host logs.example.com \
   -token YOUR_API_TOKEN \
   -batch 50 \

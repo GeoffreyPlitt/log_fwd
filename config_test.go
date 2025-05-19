@@ -90,7 +90,7 @@ func TestParseFlags(t *testing.T) {
 	// Save original arguments and fatal function
 	oldArgs := os.Args
 	oldFatal := CurrentLogFatal
-	
+
 	// Restore them when we're done
 	defer func() {
 		os.Args = oldArgs
@@ -131,7 +131,7 @@ func TestParseFlags(t *testing.T) {
 				Host:        "example.com",
 				Port:        443, // Default port is now 443
 				ProgramName: "custom-logger",
-				BufferPath:  "papertrail_buffer.log",
+				BufferPath:  "log_fwd_buffer.log",
 				MaxSize:     DefaultMaxSize,
 				ShowVersion: false,
 				AuthToken:   "mytoken",
@@ -174,7 +174,7 @@ func TestParseFlags(t *testing.T) {
 				Host:        "",
 				Port:        443, // Default port is now 443
 				ProgramName: "custom-logger",
-				BufferPath:  "papertrail_buffer.log",
+				BufferPath:  "log_fwd_buffer.log",
 				MaxSize:     DefaultMaxSize,
 				ShowVersion: true,
 				AuthToken:   "",

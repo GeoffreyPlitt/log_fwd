@@ -9,13 +9,13 @@ import (
 )
 
 const (
-	DefaultMaxSize    = 100 * 1024 * 1024 // 100MB default
-	ReconnectTimeout  = 60 * time.Second
-	ReadChunkSize     = 4096      // 4KB read chunks
-	InitialBufferSize = 64 * 1024 // Start with 64KB
-	DefaultBatchSize  = 10        // Default number of logs per batch
-	DefaultMaxRetries = 3         // Default number of retries
-	DefaultHTTPTimeout = 30 * time.Second // Default HTTP client timeout
+	DefaultMaxSize        = 100 * 1024 * 1024 // 100MB default
+	ReconnectTimeout      = 60 * time.Second
+	ReadChunkSize         = 4096             // 4KB read chunks
+	InitialBufferSize     = 64 * 1024        // Start with 64KB
+	DefaultBatchSize      = 10               // Default number of logs per batch
+	DefaultMaxRetries     = 3                // Default number of retries
+	DefaultHTTPTimeout    = 30 * time.Second // Default HTTP client timeout
 	DefaultRequestTimeout = 10 * time.Second // Default per-request timeout
 )
 
@@ -24,23 +24,23 @@ var ErrInvalidConfig = errors.New("invalid configuration")
 
 // Config holds all program configuration
 type Config struct {
-	CertFile        string
-	Host            string
-	Port            int
-	ProgramName     string
-	BufferPath      string
-	MaxSize         int64
-	ShowVersion     bool
-	Verbose         bool
-	Quiet           bool          // Suppress echoing logs to stdout
-	AuthToken       string
-	InsecureSSL     bool
-	BatchSize       int           // Number of log entries to batch in a single HTTP request
-	MaxRetries      int           // Maximum number of retries for failed requests
-	HTTPTimeout     time.Duration // Overall HTTP client timeout
-	RequestTimeout  time.Duration // Per-request timeout
-	EnableBatching  bool          // Whether to enable log batching
-	CompressLogs    bool          // Whether to compress logs (gzip) before sending
+	CertFile       string
+	Host           string
+	Port           int
+	ProgramName    string
+	BufferPath     string
+	MaxSize        int64
+	ShowVersion    bool
+	Verbose        bool
+	Quiet          bool // Suppress echoing logs to stdout
+	AuthToken      string
+	InsecureSSL    bool
+	BatchSize      int           // Number of log entries to batch in a single HTTP request
+	MaxRetries     int           // Maximum number of retries for failed requests
+	HTTPTimeout    time.Duration // Overall HTTP client timeout
+	RequestTimeout time.Duration // Per-request timeout
+	EnableBatching bool          // Whether to enable log batching
+	CompressLogs   bool          // Whether to compress logs (gzip) before sending
 }
 
 // Validate checks if the config has all required fields
@@ -72,10 +72,10 @@ func ParseFlags() *Config {
 	config := &Config{}
 
 	flag.StringVar(&config.CertFile, "cert", "", "Path to certificate bundle (optional, uses system certs if not provided)")
-	flag.StringVar(&config.Host, "host", "", "Log destination host (e.g., s8676456.eu-nbg-2.betterstackdata.com)")
+	flag.StringVar(&config.Host, "host", "", "Log destination host (e.g., s86746456.eu-nbg-2.betterstackdata.com)")
 	flag.IntVar(&config.Port, "port", 443, "Port for log destination (defaults to 443 for HTTPS)")
 	flag.StringVar(&config.ProgramName, "program", "custom-logger", "Program name for log identification")
-	flag.StringVar(&config.BufferPath, "buffer", "papertrail_buffer.log", "Path to buffer file")
+	flag.StringVar(&config.BufferPath, "buffer", "log_fwd_buffer.log", "Path to buffer file")
 	flag.StringVar(&config.AuthToken, "token", "", "Authorization token (required for HTTP API)")
 	maxSize := flag.Int64("maxsize", DefaultMaxSize, "Maximum buffer size in bytes")
 	batchSize := flag.Int("batch", DefaultBatchSize, "Number of log entries to batch in a single request")

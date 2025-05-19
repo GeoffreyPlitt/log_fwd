@@ -4,7 +4,7 @@
 *.dll
 *.so
 *.dylib
-papertrail_fwd
+log_fwd
 
 # Test binary, built with `go test -c`
 *.test
@@ -19,7 +19,7 @@ coverage.txt
 # vendor/
 
 # Buffer files
-papertrail_buffer.log
+log_fwd_buffer.log
 *.log
 
 # IDE files

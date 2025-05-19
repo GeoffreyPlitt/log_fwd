@@ -42,17 +42,3 @@ func TestSetupSignalHandling(t *testing.T) {
 		t.Fatal("Timeout waiting for signal handler")
 	}
 }
-
-// TestMainWithMocks is a placeholder showing how we could test main with mocks
-func TestMainWithMocks(t *testing.T) {
-	// Skip this test for real runs
-	t.Skip("This is a placeholder test")
-
-	// In a real test, we would:
-	// 1. Mock os.Args to provide test arguments
-	// 2. Create a temporary file for the buffer
-	// 3. Mock stdin to provide test input
-	// 4. Mock the Papertrail client
-	// 5. Run main() in a goroutine
-	// 6. Check that logs were processed correctly
-}

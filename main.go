@@ -29,14 +29,14 @@ func logData(data []byte) {
 	if !isVerbose {
 		return
 	}
-	
+
 	// Create a safe version of the content for logging (up to a reasonable length)
 	maxLen := 1024
 	if len(data) > maxLen {
 		debugf("(Showing first %d bytes of %d total)", maxLen, len(data))
 		data = data[:maxLen]
 	}
-	
+
 	safeContent := make([]byte, 0, len(data))
 	for _, b := range data {
 		// Replace non-printable characters with their escaped representation
@@ -58,7 +58,7 @@ func logData(data []byte) {
 			safeContent = append(safeContent, b)
 		}
 	}
-	
+
 	debugf("Log content: %s", string(safeContent))
 }
 
@@ -73,16 +73,16 @@ func main() {
 
 	// Parse command line arguments
 	cfg := ParseFlags()
-	
+
 	// Set global verbose flag
 	isVerbose = cfg.Verbose
-	
+
 	// Check if version flag was specified
 	if cfg.ShowVersion {
-		fmt.Printf("papertrail_fwd version %s (built at %s)\n", Version, BuildTime)
+		fmt.Printf("log_fwd version %s (built at %s)\n", Version, BuildTime)
 		return
 	}
-	
+
 	if isVerbose {
 		debugf("Verbose logging enabled")
 	}
@@ -118,10 +118,10 @@ func main() {
 	// Create a channel to signal new logs are available
 	newLogs := make(chan struct{}, 1)
 
-	// Initialize Papertrail client
+	// Initialize log_fwd client
 	client, err := NewClient(cfg)
 	if err != nil {
-		log.Fatalf("Failed to create Papertrail client: %v", err)
+		log.Fatalf("Failed to create log_fwd client: %v", err)
 	}
 
 	// Start sender goroutine

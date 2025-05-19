@@ -1,7 +1,7 @@
 .PHONY: build test cover lint clean
 
 # Build variables
-BINARY_NAME=papertrail_fwd
+BINARY_NAME=log_fwd
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "1.0.0")
 BUILD_TIME=$(shell date +%FT%T%z)
 LDFLAGS=-ldflags "-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}"
