@@ -12,7 +12,7 @@ import (
 
 // Version and BuildTime are set via ldflags during build
 var (
-	Version   = "dev"
+	Version   = "1.0.0"
 	BuildTime = "unknown"
 )
 

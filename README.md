@@ -1,4 +1,4 @@
-# papertrail_fwd
+# papertrail_fwd 
 
 [![Go Tests](https://github.com/yourusername/papertrail_fwd/actions/workflows/go.yml/badge.svg)](https://github.com/yourusername/papertrail_fwd/actions/workflows/go.yml)
 [![codecov](https://codecov.io/gh/yourusername/papertrail_fwd/branch/main/graph/badge.svg)](https://codecov.io/gh/yourusername/papertrail_fwd)
@@ -129,15 +129,11 @@ This project uses GitHub Actions for continuous integration:
 
 - Automated tests run on every push to the main branch and on all pull requests
 - Code coverage is tracked with Codecov
-- Code quality is monitored with golangci-lint
+- Code quality is monitored with go vet
 
 ### Code Linting
 
-This project uses [golangci-lint](https://golangci-lint.run/) for advanced linting to maintain code quality. You can install it with:
-
-```bash
-make install-lint
-```
+This project uses Go's built-in `go vet` tool for linting to maintain code quality.
 
 Run the linter:
 
@@ -145,13 +141,7 @@ Run the linter:
 make lint
 ```
 
-This will run both `go vet` and `golangci-lint` with our project configuration.
-
-The configuration in `.golangci.yml` enables multiple linters:
-- Code style checkers (gofmt, goimports, whitespace)
-- Bug finders (errcheck, staticcheck, gosec)
-- Complexity checkers (gocyclo, gocritic)
-- And many more
+This will run `go vet` to analyze your code and report potential issues.
 
 ## License
 
