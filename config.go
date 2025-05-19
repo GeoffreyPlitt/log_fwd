@@ -11,8 +11,8 @@ import (
 const (
 	DefaultMaxSize    = 100 * 1024 * 1024 // 100MB default
 	ReconnectTimeout  = 60 * time.Second
-	ReadChunkSize     = 4096               // 4KB read chunks
-	InitialBufferSize = 64 * 1024          // Start with 64KB
+	ReadChunkSize     = 4096      // 4KB read chunks
+	InitialBufferSize = 64 * 1024 // Start with 64KB
 )
 
 // ErrInvalidConfig is returned when required configuration is missing
@@ -59,9 +59,9 @@ var CurrentLogFatal LogFatalFunc = DefaultLogFatal
 // ParseFlags parses command line flags and returns a config
 func ParseFlags() *Config {
 	config := &Config{}
-	
+
 	flag.StringVar(&config.CertFile, "cert", "", "Path to certificate bundle (optional, uses system certs if not provided)")
-	flag.StringVar(&config.Host, "host", "", "Log destination host (e.g., s1314159.eu-nbg-2.betterstackdata.com)")
+	flag.StringVar(&config.Host, "host", "", "Log destination host (e.g., s8676456.eu-nbg-2.betterstackdata.com)")
 	flag.IntVar(&config.Port, "port", 443, "Port for log destination (defaults to 443 for HTTPS)")
 	flag.StringVar(&config.ProgramName, "program", "custom-logger", "Program name for log identification")
 	flag.StringVar(&config.BufferPath, "buffer", "papertrail_buffer.log", "Path to buffer file")
@@ -71,12 +71,12 @@ func ParseFlags() *Config {
 	verbose := flag.Bool("v", false, "Enable verbose debug logging")
 	insecureSSL := flag.Bool("k", false, "Allow insecure SSL connections (skip certificate validation)")
 	flag.Parse()
-	
+
 	config.MaxSize = *maxSize
 	config.ShowVersion = *showVersion
 	config.Verbose = *verbose
 	config.InsecureSSL = *insecureSSL
-	
+
 	// If version flag is set, we'll handle this separately in main() so skip validation
 	if !config.ShowVersion {
 		// Validate required flags
@@ -84,6 +84,6 @@ func ParseFlags() *Config {
 			CurrentLogFatal(err)
 		}
 	}
-	
+
 	return config
 }

@@ -85,6 +85,17 @@ type Buffer interface {
 func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan struct{}) {
 	debugf("SendLogs started for HTTP API endpoint %s", c.url)
 	
+	// Log the settings we're using
+	fmt.Fprintf(os.Stderr, "Starting log forwarding to %s\n", c.url)
+	if c.insecureSSL {
+		fmt.Fprintf(os.Stderr, "Warning: TLS certificate verification is disabled\n")
+	}
+	
+	// Track successful and failed requests
+	var successCount, failCount int64
+	lastStatusReport := time.Now()
+	reportInterval := 1 * time.Minute
+	
 	for {
 		// Check if we should exit
 		select {
@@ -92,6 +103,13 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 			debugf("Context canceled, shutting down SendLogs")
 			return
 		default:
+		}
+		
+		// Periodically report statistics
+		if time.Since(lastStatusReport) >= reportInterval {
+			fmt.Fprintf(os.Stderr, "Log forwarding stats: %d successful, %d failed\n", 
+				successCount, failCount)
+			lastStatusReport = time.Now()
 		}
 		
 		// Check for data in buffer
@@ -113,7 +131,7 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 		}
 
 		// Read log data from buffer
-		debugf("Reading logs from buffer")
+		debugf("Reading logs from buffer (size: %d bytes)", buffer.GetSize())
 		data, err := buffer.Read(ReadChunkSize)
 		if err != nil && err != io.EOF {
 			fmt.Fprintf(os.Stderr, "Error reading from buffer: %v\n", err)
@@ -125,8 +143,8 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 		if len(data) > 0 {
 			debugf("Processing %d bytes of log data", len(data))
 			
-			// Parse the syslog format and convert to JSON for HTTP API
-			// Assuming each line is a separate log entry
+			// Parse and convert to JSON for HTTP API
+			// Each line is a separate log entry
 			lines := strings.Split(string(data), "\n")
 			for _, line := range lines {
 				if line == "" {
@@ -136,8 +154,7 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 				// Log the actual content being sent
 				logData([]byte(line))
 				
-				// Extract the actual message from the syslog format
-				// Example: <13>1 2023-04-14T15:04:05Z hostname program - - - Actual log message
+				// Extract the actual message from the syslog format if present
 				message := extractMessage(line)
 				
 				// Create JSON payload
@@ -151,19 +168,26 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error creating JSON payload: %v\n", err)
 					debugf("Error creating JSON payload: %v", err)
+					failCount++
 					continue
 				}
 				
 				// Send HTTP request
-				if err := c.sendHTTPRequest(ctx, jsonData); err != nil {
+				statusCode, err := c.sendHTTPRequest(ctx, jsonData)
+				if err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to send log: %v\n", err)
 					debugf("Failed to send log: %v", err)
+					failCount++
 					// Wait a bit before retrying
 					time.Sleep(1 * time.Second)
 					continue
 				}
 				
-				debugf("Successfully sent log entry")
+				// Record success
+				successCount++
+				// Log success to stderr (important for stdout) with status code
+				fmt.Fprintf(os.Stderr, "Successfully sent log entry (HTTP %d)\n", statusCode)
+				debugf("Successfully sent log entry with status code: %d", statusCode)
 			}
 		} else {
 			// No data, short pause
@@ -173,8 +197,8 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 	}
 }
 
-// sendHTTPRequest sends a single log entry via HTTP POST
-func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) error {
+// sendHTTPRequest sends a single log entry via HTTP POST and returns the status code
+func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) (int, error) {
 	// Create request with timeout context
 	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -182,7 +206,7 @@ func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) error
 	debugf("Sending HTTP request to %s", c.url)
 	req, err := http.NewRequestWithContext(reqCtx, "POST", c.url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Errorf("error creating request: %w", err)
+		return 0, fmt.Errorf("error creating request: %w", err)
 	}
 	
 	// Set headers
@@ -191,21 +215,36 @@ func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) error
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.authToken))
 	}
 	
+	// Log request details in verbose mode
+	debugf("Request headers: %+v", req.Header)
+	debugf("Request payload: %s", string(jsonData))
+	
 	// Send request
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("error sending request: %w", err)
+		return 0, fmt.Errorf("error sending request: %w", err)
 	}
 	defer resp.Body.Close()
 	
+	// Always log response status
+	statusCode := resp.StatusCode
+	
 	// Check response status
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if statusCode < 200 || statusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("got non-success status code %d: %s", resp.StatusCode, body)
+		return statusCode, fmt.Errorf("got non-success status code %d: %s", statusCode, body)
 	}
 	
-	debugf("HTTP request succeeded with status %d", resp.StatusCode)
-	return nil
+	// For success responses, try to read response body for debugging
+	debugf("HTTP request succeeded with status %d", statusCode)
+	if isVerbose {
+		body, _ := io.ReadAll(resp.Body)
+		if len(body) > 0 {
+			debugf("Response body: %s", body)
+		}
+	}
+	
+	return statusCode, nil
 }
 
 // extractMessage extracts the actual message from a syslog formatted line

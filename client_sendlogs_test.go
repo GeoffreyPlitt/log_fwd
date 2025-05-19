@@ -14,7 +14,7 @@ func TestSendLogsNoDataPath(t *testing.T) {
 	defer server.Close()
 	
 	// Create a mock buffer with NO data
-	mockBuffer := &MockBuffer{}
+	mockBuffer := NewMockBuffer()
 	
 	// Create a client
 	client := &HTTPClient{
@@ -46,7 +46,7 @@ func TestSendLogsSignalPath(t *testing.T) {
 	defer server.Close()
 	
 	// Create a mock buffer with NO data
-	mockBuffer := &MockBuffer{}
+	mockBuffer := NewMockBuffer()
 	
 	// Create a client
 	client := &HTTPClient{
@@ -80,7 +80,7 @@ func TestSendLogsErrorHandling(t *testing.T) {
 	defer server.Close()
 	
 	// Create a mock buffer WITH data
-	mockBuffer := &MockBuffer{}
+	mockBuffer := NewMockBuffer()
 	mockBuffer.Write([]byte("test log message\n"))
 	
 	// Create a client

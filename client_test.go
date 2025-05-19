@@ -164,9 +164,12 @@ func TestSendHTTPRequest(t *testing.T) {
 	}
 	
 	// Send the request
-	err = client.sendHTTPRequest(context.Background(), jsonData)
+	statusCode, err := client.sendHTTPRequest(context.Background(), jsonData)
 	if err != nil {
 		t.Errorf("sendHTTPRequest failed: %v", err)
+	}
+	if statusCode < 200 || statusCode >= 300 {
+		t.Errorf("Expected 2xx status code, got %d", statusCode)
 	}
 }
 
@@ -196,9 +199,12 @@ func TestSendHTTPRequestErrors(t *testing.T) {
 		}
 		
 		// Should get an error due to 500 status code
-		err = client.sendHTTPRequest(context.Background(), jsonData)
+		statusCode, err := client.sendHTTPRequest(context.Background(), jsonData)
 		if err == nil {
 			t.Error("Expected error for 500 status, got nil")
+		}
+		if statusCode != http.StatusInternalServerError {
+			t.Errorf("Expected status code %d, got %d", http.StatusInternalServerError, statusCode)
 		}
 	})
 	
@@ -223,9 +229,12 @@ func TestSendHTTPRequestErrors(t *testing.T) {
 		}
 		
 		// Should get an error due to invalid URL
-		err = client.sendHTTPRequest(context.Background(), jsonData)
+		statusCode, err := client.sendHTTPRequest(context.Background(), jsonData)
 		if err == nil {
 			t.Error("Expected error for invalid URL, got nil")
+		}
+		if statusCode != 0 {
+			t.Errorf("Expected status code 0 for connection error, got %d", statusCode)
 		}
 	})
 }
@@ -236,7 +245,7 @@ func TestSendLogsContextCancellation(t *testing.T) {
 	defer server.Close()
 	
 	// Create a mock buffer with NO data
-	mockBuffer := &MockBuffer{}
+	mockBuffer := NewMockBuffer()
 	
 	// Create a client
 	client := &HTTPClient{
@@ -271,7 +280,7 @@ func TestSendLogsWithData(t *testing.T) {
 	defer server.Close()
 	
 	// Create a mock buffer WITH data
-	mockBuffer := &MockBuffer{}
+	mockBuffer := NewMockBuffer()
 	mockBuffer.Write([]byte("test log message\n"))
 	
 	// Create a client
