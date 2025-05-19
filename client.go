@@ -316,12 +316,12 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 					successCount += int64(batchSize)
 					batchCount++
 					
-					// Log success with detailed information
-					fmt.Fprintf(os.Stderr, "------------------------------------------------------\n")
-					fmt.Fprintf(os.Stderr, "Successfully sent batch of %d log entries (HTTP %d)\n", 
+					// Log success with detailed information (only in verbose mode)
+					debugf("------------------------------------------------------")
+					debugf("Successfully sent batch of %d log entries (HTTP %d)", 
 						batchSize, statusCode)
-					fmt.Fprintf(os.Stderr, "All messages delivered successfully to %s\n", c.url)
-					fmt.Fprintf(os.Stderr, "------------------------------------------------------\n")
+					debugf("All messages delivered successfully to %s", c.url)
+					debugf("------------------------------------------------------")
 					debugf("Successfully sent batch with status code: %d", statusCode)
 					
 					// Remove the processed messages from the queue
@@ -409,11 +409,11 @@ func (c *HTTPClient) SendLogs(ctx context.Context, buffer Buffer, signal chan st
 				// Record success
 				successCount++
 				
-				// Log success to stderr with status code and detailed information
-				fmt.Fprintf(os.Stderr, "------------------------------------------------------\n")
-				fmt.Fprintf(os.Stderr, "Successfully sent log entry (HTTP %d)\n", statusCode)
-				fmt.Fprintf(os.Stderr, "Message delivered successfully to %s\n", c.url)
-				fmt.Fprintf(os.Stderr, "------------------------------------------------------\n")
+				// Log success with detailed information (only in verbose mode)
+				debugf("------------------------------------------------------")
+				debugf("Successfully sent log entry (HTTP %d)", statusCode)
+				debugf("Message delivered successfully to %s", c.url)
+				debugf("------------------------------------------------------")
 				debugf("Successfully sent log entry with status code: %d", statusCode)
 				
 				// Remove the processed message from the queue
@@ -466,11 +466,11 @@ func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) (int,
 	
 	if c.authToken != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.authToken))
-		// Log HTTP method, URL and request size - but don't log token details
-		fmt.Fprintf(os.Stderr, "HTTP Request: %s %s (Auth: [REDACTED], %d bytes)\n", 
+		// Log HTTP request info (only in verbose mode)
+		debugf("HTTP Request: %s %s (Auth: [REDACTED], %d bytes)", 
 			req.Method, req.URL, len(jsonData))
 	} else {
-		fmt.Fprintf(os.Stderr, "HTTP Request: %s %s (NO AUTH TOKEN, %d bytes)\n", 
+		debugf("HTTP Request: %s %s (NO AUTH TOKEN, %d bytes)", 
 			req.Method, req.URL, len(jsonData))
 	}
 	
@@ -508,14 +508,12 @@ func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) (int,
 	// Always log response status and headers
 	statusCode := resp.StatusCode
 	
-	// Log detailed response information - always log to stderr for visibility
-	fmt.Fprintf(os.Stderr, "Response received: %d %s\n", statusCode, resp.Status)
-	debugf("Response status: %d %s", statusCode, resp.Status)
+	// Log detailed response information (only in verbose mode)
+	debugf("Response received: %d %s", statusCode, resp.Status)
 	debugf("Response protocol: %s", resp.Proto)
 	
 	// Log all response headers
 	debugf("Response headers:")
-	// Print a summary to stderr as well
 	headerSummary := ""
 	for k, v := range resp.Header {
 		debugf("  %s: %s", k, strings.Join(v, ", "))
@@ -523,9 +521,7 @@ func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) (int,
 			headerSummary += fmt.Sprintf("%s: %s ", k, strings.Join(v, ", "))
 		}
 	}
-	if headerSummary != "" {
-		fmt.Fprintf(os.Stderr, "Response headers: %s\n", headerSummary)
-	}
+	debugf("Response headers summary: %s", headerSummary)
 	
 	// Always read the response body for logging
 	bodyBytes, err := io.ReadAll(resp.Body)
@@ -536,18 +532,16 @@ func (c *HTTPClient) sendHTTPRequest(ctx context.Context, jsonData []byte) (int,
 	// Create a new reader with the same content for potential error handling
 	resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 	
-	// For all responses, log the body content
+	// Log the body content (only in verbose mode)
 	if len(bodyBytes) > 0 {
-		// Always print to stderr for easier debugging
-		fmt.Fprintf(os.Stderr, "Response body (%d bytes):\n", len(bodyBytes))
 		if len(bodyBytes) > 1024 {
-			fmt.Fprintf(os.Stderr, "  (first 1024 bytes): %s\n", string(bodyBytes[:1024]))
-			debugf("  [truncated - total length: %d bytes]", len(bodyBytes))
+			debugf("Response body (%d bytes, first 1024): %s", len(bodyBytes), string(bodyBytes[:1024]))
+			debugf("[truncated - total length: %d bytes]", len(bodyBytes))
 		} else {
-			fmt.Fprintf(os.Stderr, "  %s\n", string(bodyBytes))
+			debugf("Response body (%d bytes): %s", len(bodyBytes), string(bodyBytes))
 		}
 	} else {
-		fmt.Fprintf(os.Stderr, "Response body: [empty]\n")
+		debugf("Response body: [empty]")
 	}
 	
 	// Check response status
