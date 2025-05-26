@@ -2,7 +2,7 @@
 
 [![Go Tests](https://github.com/GeoffreyPlitt/log_fwd/actions/workflows/go.yml/badge.svg)](https://github.com/GeoffreyPlitt/log_fwd/actions/workflows/go.yml)
 [![codecov](https://codecov.io/gh/GeoffreyPlitt/log_fwd/branch/main/graph/badge.svg)](https://codecov.io/gh/GeoffreyPlitt/log_fwd)
-[![Go Version](https://img.shields.io/badge/Go-1.24+-blue.svg)](https://golang.org/doc/go1.24)
+[![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org/doc/go1.21)
 [![Go Report Card](https://goreportcard.com/badge/github.com/GeoffreyPlitt/log_fwd)](https://goreportcard.com/report/github.com/GeoffreyPlitt/log_fwd)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -21,11 +21,11 @@ This program forwards logs to log management services using HTTP APIs. It reads 
 - Clean shutdown on signal interrupts
 - Efficient buffer management for large volumes of logs
 - Panic recovery
-- Modern Go 1.24 standards and error handling
+- Modern Go standards and error handling
 
 ## Installation
 
-Requires Go 1.24 or higher.
+Requires Go 1.21 or higher.
 
 ```bash
 go install github.com/GeoffreyPlitt/log_fwd@latest
