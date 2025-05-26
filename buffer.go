@@ -8,6 +8,15 @@ import (
 	"sync"
 )
 
+// BufferInterface defines the interface for buffer types
+type BufferInterface interface {
+	Write(data []byte) (int, error)
+	Read(maxBytes int64) ([]byte, error)
+	HasData() bool
+	GetSize() int64
+	Close() error
+}
+
 // CircularBuffer implements a simple circular buffer using a file
 type CircularBuffer struct {
 	file     *os.File
@@ -22,7 +31,7 @@ type CircularBuffer struct {
 // NewBuffer creates a new circular buffer with dynamic growth
 func NewBuffer(path string, maxSize int64) (*CircularBuffer, error) {
 	debugf("Creating buffer with path: %s, maxSize: %d bytes", path, maxSize)
-	
+
 	// Create buffer directory if it doesn't exist
 	dir := filepath.Dir(path)
 	debugf("Ensuring buffer directory exists: %s", dir)
@@ -50,7 +59,7 @@ func NewBuffer(path string, maxSize int64) (*CircularBuffer, error) {
 
 	fileSize := info.Size()
 	debugf("Initial buffer file size: %d bytes", fileSize)
-	
+
 	// Initialize with minimal size if empty
 	if fileSize == 0 {
 		debugf("Buffer file is empty, initializing with size: %d bytes", InitialBufferSize)
@@ -66,7 +75,7 @@ func NewBuffer(path string, maxSize int64) (*CircularBuffer, error) {
 		file:     file,
 		maxSize:  maxSize,
 		fileSize: fileSize,
-		size:     0,         // Start assuming buffer is empty
+		size:     0, // Start assuming buffer is empty
 		readPos:  0,
 		writePos: 0,
 	}, nil
@@ -78,7 +87,7 @@ func (cb *CircularBuffer) Write(data []byte) (int, error) {
 	defer cb.mutex.Unlock()
 
 	dataLen := int64(len(data))
-	
+
 	// Check if data is larger than max buffer
 	if dataLen > cb.maxSize {
 		return 0, fmt.Errorf("data exceeds maximum buffer size")
@@ -92,7 +101,7 @@ func (cb *CircularBuffer) Write(data []byte) (int, error) {
 		if newSize > cb.maxSize {
 			newSize = cb.maxSize
 		}
-		
+
 		if newSize < requiredSpace && cb.size < cb.maxSize {
 			// Overwrite oldest data in circular fashion
 			cb.readPos = (cb.writePos + dataLen) % cb.fileSize
@@ -107,7 +116,7 @@ func (cb *CircularBuffer) Write(data []byte) (int, error) {
 	}
 
 	// Write the data, handling wrapping if needed
-	if cb.writePos + dataLen <= cb.fileSize {
+	if cb.writePos+dataLen <= cb.fileSize {
 		// Simple case: write in one chunk
 		if _, err := cb.file.WriteAt(data, cb.writePos); err != nil {
 			return 0, err
@@ -125,7 +134,7 @@ func (cb *CircularBuffer) Write(data []byte) (int, error) {
 
 	// Update write position and size
 	cb.writePos = (cb.writePos + dataLen) % cb.fileSize
-	
+
 	// Update size, capped at fileSize
 	if cb.size < cb.fileSize {
 		cb.size += dataLen
@@ -155,7 +164,7 @@ func (cb *CircularBuffer) Read(maxBytes int64) ([]byte, error) {
 	data := make([]byte, toRead)
 
 	// Handle reading with potential wrap-around
-	if cb.readPos + toRead <= cb.fileSize {
+	if cb.readPos+toRead <= cb.fileSize {
 		// Read in one chunk
 		if _, err := cb.file.ReadAt(data, cb.readPos); err != nil {
 			return nil, err

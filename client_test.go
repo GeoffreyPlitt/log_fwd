@@ -32,20 +32,37 @@ func createMockHTTPServer(t *testing.T, statusCode int, responseBody string) *ht
 			return
 		}
 
-		// Verify that the body is valid JSON with dt and message fields
+		// Try to parse as individual LogEntry first
 		var logEntry LogEntry
-		if err := json.Unmarshal(body, &logEntry); err != nil {
-			t.Errorf("Invalid JSON in request body: %v", err)
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
+		if err := json.Unmarshal(body, &logEntry); err == nil {
+			// Single log entry
+			if logEntry.Timestamp == "" {
+				t.Error("Missing dt field in log entry")
+			}
+			if logEntry.Message == "" {
+				t.Error("Missing message field in log entry")
+			}
+		} else {
+			// Try to parse as LogBatch (array)
+			var logBatch LogBatch
+			if err := json.Unmarshal(body, &logBatch); err != nil {
+				t.Errorf("Invalid JSON in request body (neither LogEntry nor LogBatch): %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
 
-		if logEntry.Timestamp == "" {
-			t.Error("Missing dt field in log entry")
-		}
-
-		if logEntry.Message == "" {
-			t.Error("Missing message field in log entry")
+			// Validate batch entries
+			if len(logBatch) == 0 {
+				t.Error("Empty batch received")
+			}
+			for i, entry := range logBatch {
+				if entry.Timestamp == "" {
+					t.Errorf("Missing dt field in batch entry %d", i)
+				}
+				if entry.Message == "" {
+					t.Errorf("Missing message field in batch entry %d", i)
+				}
+			}
 		}
 
 		// Return the configured response
@@ -372,5 +389,80 @@ func TestExtractMessage(t *testing.T) {
 				t.Errorf("extractMessage(%q) = %q, want %q", test.input, result, test.expected)
 			}
 		})
+	}
+}
+
+// TestCalculateBackoff tests the exponential backoff calculation
+func TestCalculateBackoff(t *testing.T) {
+	tests := []struct {
+		name       string
+		retryCount int
+		expectMin  time.Duration
+		expectMax  time.Duration
+	}{
+		{
+			name:       "zero retries",
+			retryCount: 0,
+			expectMin:  80 * time.Millisecond,  // 100ms - 20% jitter
+			expectMax:  120 * time.Millisecond, // 100ms + 20% jitter
+		},
+		{
+			name:       "negative retries",
+			retryCount: -1,
+			expectMin:  80 * time.Millisecond,
+			expectMax:  120 * time.Millisecond,
+		},
+		{
+			name:       "first retry",
+			retryCount: 1,
+			expectMin:  800 * time.Millisecond,  // 1s - 20% jitter
+			expectMax:  1200 * time.Millisecond, // 1s + 20% jitter
+		},
+		{
+			name:       "second retry",
+			retryCount: 2,
+			expectMin:  1600 * time.Millisecond, // 2s - 20% jitter
+			expectMax:  2400 * time.Millisecond, // 2s + 20% jitter
+		},
+		{
+			name:       "high retry count (should cap at 30s)",
+			retryCount: 10,
+			expectMin:  24 * time.Second, // 30s - 20% jitter
+			expectMax:  36 * time.Second, // 30s + 20% jitter
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			backoff := calculateBackoff(tt.retryCount)
+
+			if backoff < tt.expectMin || backoff > tt.expectMax {
+				t.Errorf("calculateBackoff(%d) = %v, expected between %v and %v",
+					tt.retryCount, backoff, tt.expectMin, tt.expectMax)
+			}
+		})
+	}
+}
+
+// TestCalculateBackoffConsistency tests that backoff values are reasonable
+func TestCalculateBackoffConsistency(t *testing.T) {
+	// Test that backoff generally increases with retry count (allowing for jitter)
+
+	for i := 1; i <= 5; i++ {
+		backoff := calculateBackoff(i)
+
+		// Each backoff should be at least 50% of the expected exponential value
+		// to account for jitter while still ensuring general increase
+		expectedMin := time.Duration(1<<uint(i-1)) * time.Second / 2
+
+		if backoff < expectedMin {
+			t.Errorf("Backoff for retry %d (%v) is too small, expected at least %v",
+				i, backoff, expectedMin)
+		}
+
+		// Ensure we don't have negative backoff
+		if backoff < 0 {
+			t.Errorf("Negative backoff for retry %d: %v", i, backoff)
+		}
 	}
 }

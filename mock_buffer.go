@@ -8,9 +8,11 @@ import (
 
 // MockBuffer is a simple in-memory implementation of the buffer for testing
 type MockBuffer struct {
-	buffer bytes.Buffer
-	mutex  sync.Mutex
-	closed bool
+	buffer     bytes.Buffer
+	mutex      sync.Mutex
+	closed     bool
+	WriteError error // Error to return on Write calls
+	ReadError  error // Error to return on Read calls
 }
 
 // NewMockBuffer creates a new mock buffer
@@ -22,11 +24,16 @@ func NewMockBuffer() *MockBuffer {
 func (m *MockBuffer) Write(data []byte) (int, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	if m.closed {
 		return 0, io.ErrClosedPipe
 	}
-	
+
+	// Return error if one is set
+	if m.WriteError != nil {
+		return 0, m.WriteError
+	}
+
 	return m.buffer.Write(data)
 }
 
@@ -34,27 +41,32 @@ func (m *MockBuffer) Write(data []byte) (int, error) {
 func (m *MockBuffer) Read(maxBytes int64) ([]byte, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	if m.closed {
 		return nil, io.ErrClosedPipe
 	}
-	
+
+	// Return error if one is set
+	if m.ReadError != nil {
+		return nil, m.ReadError
+	}
+
 	if m.buffer.Len() == 0 {
 		return nil, io.EOF
 	}
-	
+
 	// Determine how much to read
 	toRead := int(maxBytes)
 	if toRead > m.buffer.Len() {
 		toRead = m.buffer.Len()
 	}
-	
+
 	data := make([]byte, toRead)
 	n, err := m.buffer.Read(data)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return data[:n], nil
 }
 
@@ -62,7 +74,7 @@ func (m *MockBuffer) Read(maxBytes int64) ([]byte, error) {
 func (m *MockBuffer) HasData() bool {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	return m.buffer.Len() > 0
 }
 
@@ -70,7 +82,7 @@ func (m *MockBuffer) HasData() bool {
 func (m *MockBuffer) GetSize() int64 {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	return int64(m.buffer.Len())
 }
 
@@ -78,7 +90,7 @@ func (m *MockBuffer) GetSize() int64 {
 func (m *MockBuffer) Close() error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	m.closed = true
 	return nil
 }
@@ -87,7 +99,7 @@ func (m *MockBuffer) Close() error {
 func (m *MockBuffer) GetContents() []byte {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	return m.buffer.Bytes()
 }
 
@@ -95,6 +107,6 @@ func (m *MockBuffer) GetContents() []byte {
 func (m *MockBuffer) Reset() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	
+
 	m.buffer.Reset()
 }
