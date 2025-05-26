@@ -19,11 +19,11 @@ func createMockHTTPServer(t *testing.T, statusCode int, responseBody string) *ht
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check for expected headers
 		contentType := r.Header.Get("Content-Type")
-		
+
 		if contentType != "application/json" {
 			t.Errorf("Expected Content-Type header 'application/json', got %q", contentType)
 		}
-		
+
 		// Read and validate request body
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -31,7 +31,7 @@ func createMockHTTPServer(t *testing.T, statusCode int, responseBody string) *ht
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		
+
 		// Verify that the body is valid JSON with dt and message fields
 		var logEntry LogEntry
 		if err := json.Unmarshal(body, &logEntry); err != nil {
@@ -39,20 +39,20 @@ func createMockHTTPServer(t *testing.T, statusCode int, responseBody string) *ht
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		
+
 		if logEntry.Timestamp == "" {
 			t.Error("Missing dt field in log entry")
 		}
-		
+
 		if logEntry.Message == "" {
 			t.Error("Missing message field in log entry")
 		}
-		
+
 		// Return the configured response
 		w.WriteHeader(statusCode)
 		w.Write([]byte(responseBody))
 	})
-	
+
 	return httptest.NewTLSServer(handler)
 }
 
@@ -68,9 +68,9 @@ func TestNewClient(t *testing.T) {
 			t.Fatalf("Failed to create temp dir: %v", err)
 		}
 		defer os.RemoveAll(tmpDir)
-		
+
 		certPath := filepath.Join(tmpDir, "cert.pem")
-		
+
 		// Write a dummy cert
 		certContent := `-----BEGIN CERTIFICATE-----
 MIIDazCCAlOgAwIBAgIUXzRGz3yIGrjP7lE7b9Jp2buwNr4wDQYJKoZIhvcNAQEL
@@ -90,11 +90,11 @@ SB8Y9pfvVyjAVGFGlDlTHENITUQvHDfGUd+HaDVvpVIAuA1ARIjWRmqwQ9cKz5UI
 7H7WLwkUxk1sjVlbBWg4j8bZN9+tZPYx4frBUoVQCy7GD82wdMQCJCaY7dUHKw2r
 6PYEeNHEyEbVmSWKfvjGewNuWQ7MJyBW4+1j5Qbh5A4bPsHcGnrEZWDlAdxq3BXr
 -----END CERTIFICATE-----`
-		
+
 		if err := os.WriteFile(certPath, []byte(certContent), 0644); err != nil {
 			t.Fatalf("Failed to write cert file: %v", err)
 		}
-		
+
 		cfg := &Config{
 			CertFile:    certPath,
 			Host:        "example.com",
@@ -104,7 +104,7 @@ SB8Y9pfvVyjAVGFGlDlTHENITUQvHDfGUd+HaDVvpVIAuA1ARIjWRmqwQ9cKz5UI
 			MaxSize:     1024,
 			AuthToken:   "test-token",
 		}
-		
+
 		// Test creating a new client
 		// This will fail because our cert is invalid, but we can verify
 		// that the client was attempted to be constructed
@@ -113,7 +113,7 @@ SB8Y9pfvVyjAVGFGlDlTHENITUQvHDfGUd+HaDVvpVIAuA1ARIjWRmqwQ9cKz5UI
 			t.Errorf("Unexpected error: %v", err)
 		}
 	})
-	
+
 	// Test without certificate (using system certs)
 	t.Run("without certificate", func(t *testing.T) {
 		cfg := &Config{
@@ -124,13 +124,13 @@ SB8Y9pfvVyjAVGFGlDlTHENITUQvHDfGUd+HaDVvpVIAuA1ARIjWRmqwQ9cKz5UI
 			MaxSize:     1024,
 			AuthToken:   "test-token",
 		}
-		
+
 		// Test creating a new client with system certs
 		client, err := NewClient(cfg)
 		if err != nil {
 			t.Errorf("Error creating client with system certs: %v", err)
 		}
-		
+
 		if client == nil {
 			t.Error("NewClient returned nil with system certs")
 		}
@@ -142,7 +142,7 @@ func TestSendHTTPRequest(t *testing.T) {
 	// Create a mock HTTP server
 	server := createMockHTTPServer(t, http.StatusAccepted, "")
 	defer server.Close()
-	
+
 	// Create a client that points to our test server
 	client := &HTTPClient{
 		config: &Config{
@@ -157,20 +157,20 @@ func TestSendHTTPRequest(t *testing.T) {
 		client: server.Client(),
 		url:    server.URL,
 	}
-	
+
 	// Create a test log entry
 	logEntry := LogEntry{
 		Timestamp: time.Now().UTC().Format(TimestampFormat),
 		Message:   "Test log message",
 	}
-	
+
 	jsonData, err := json.Marshal(logEntry)
 	if err != nil {
 		t.Fatalf("Failed to marshal JSON: %v", err)
 	}
-	
+
 	// Send the request
-	statusCode, err := client.sendHTTPRequest(context.Background(), jsonData)
+	statusCode, err := sendHTTPRequest(client.client, context.Background(), client.url, client.authToken, jsonData, client.config)
 	if err != nil {
 		t.Errorf("sendHTTPRequest failed: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestSendHTTPRequestErrors(t *testing.T) {
 	t.Run("server error", func(t *testing.T) {
 		server := createMockHTTPServer(t, http.StatusInternalServerError, "Internal Server Error")
 		defer server.Close()
-		
+
 		client := &HTTPClient{
 			config: &Config{
 				AuthToken:      "test-token",
@@ -199,19 +199,19 @@ func TestSendHTTPRequestErrors(t *testing.T) {
 			client: server.Client(),
 			url:    server.URL,
 		}
-		
+
 		logEntry := LogEntry{
 			Timestamp: time.Now().UTC().Format(TimestampFormat),
 			Message:   "Test log message",
 		}
-		
+
 		jsonData, err := json.Marshal(logEntry)
 		if err != nil {
 			t.Fatalf("Failed to marshal JSON: %v", err)
 		}
-		
+
 		// Should get an error due to 500 status code
-		statusCode, err := client.sendHTTPRequest(context.Background(), jsonData)
+		statusCode, err := sendHTTPRequest(client.client, context.Background(), client.url, client.authToken, jsonData, client.config)
 		if err == nil {
 			t.Error("Expected error for 500 status, got nil")
 		}
@@ -219,7 +219,7 @@ func TestSendHTTPRequestErrors(t *testing.T) {
 			t.Errorf("Expected status code %d, got %d", http.StatusInternalServerError, statusCode)
 		}
 	})
-	
+
 	// Test with invalid URL
 	t.Run("invalid URL", func(t *testing.T) {
 		client := &HTTPClient{
@@ -235,19 +235,19 @@ func TestSendHTTPRequestErrors(t *testing.T) {
 			client: http.DefaultClient,
 			url:    "http://invalid-test-url-that-does-not-exist",
 		}
-		
+
 		logEntry := LogEntry{
 			Timestamp: time.Now().UTC().Format(TimestampFormat),
 			Message:   "Test log message",
 		}
-		
+
 		jsonData, err := json.Marshal(logEntry)
 		if err != nil {
 			t.Fatalf("Failed to marshal JSON: %v", err)
 		}
-		
+
 		// Should get an error due to invalid URL
-		statusCode, err := client.sendHTTPRequest(context.Background(), jsonData)
+		statusCode, err := sendHTTPRequest(client.client, context.Background(), client.url, client.authToken, jsonData, client.config)
 		if err == nil {
 			t.Error("Expected error for invalid URL, got nil")
 		}
@@ -261,16 +261,16 @@ func TestSendHTTPRequestErrors(t *testing.T) {
 func TestSendLogsContextCancellation(t *testing.T) {
 	server := createMockHTTPServer(t, http.StatusAccepted, "")
 	defer server.Close()
-	
+
 	// Create a mock buffer with NO data
 	mockBuffer := NewMockBuffer()
-	
+
 	// Create a client
 	client := &HTTPClient{
 		config: &Config{
-			Host:          "example.com",
-			Port:          443,
-			AuthToken:     "test-token",
+			Host:           "example.com",
+			Port:           443,
+			AuthToken:      "test-token",
 			RequestTimeout: 1 * time.Second,
 			HTTPTimeout:    2 * time.Second,
 			MaxRetries:     1,
@@ -281,20 +281,20 @@ func TestSendLogsContextCancellation(t *testing.T) {
 		client: server.Client(),
 		url:    server.URL,
 	}
-	
+
 	// Create a signal channel
 	signal := make(chan struct{}, 1)
-	
+
 	// Create a context with cancel
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	// Immediately cancel the context
 	cancel()
-	
+
 	// Start the SendLogs function directly - it should exit right away
 	// since we cancelled the context
 	client.SendLogs(ctx, mockBuffer, signal)
-	
+
 	// If we got here, SendLogs correctly handled the context cancellation
 }
 
@@ -302,17 +302,17 @@ func TestSendLogsContextCancellation(t *testing.T) {
 func TestSendLogsWithData(t *testing.T) {
 	server := createMockHTTPServer(t, http.StatusAccepted, "")
 	defer server.Close()
-	
+
 	// Create a mock buffer WITH data
 	mockBuffer := NewMockBuffer()
 	mockBuffer.Write([]byte("test log message\n"))
-	
+
 	// Create a client
 	client := &HTTPClient{
 		config: &Config{
-			Host:          "example.com",
-			Port:          443,
-			AuthToken:     "test-token",
+			Host:           "example.com",
+			Port:           443,
+			AuthToken:      "test-token",
 			RequestTimeout: 1 * time.Second,
 			HTTPTimeout:    2 * time.Second,
 			MaxRetries:     1,
@@ -323,17 +323,17 @@ func TestSendLogsWithData(t *testing.T) {
 		client: server.Client(),
 		url:    server.URL,
 	}
-	
+
 	// Create a signal channel
 	signal := make(chan struct{}, 1)
-	
+
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
-	
+
 	// Start the SendLogs function - it should process the log data
 	client.SendLogs(ctx, mockBuffer, signal)
-	
+
 	// If we got here, SendLogs correctly handled the logs
 }
 
@@ -364,7 +364,7 @@ func TestExtractMessage(t *testing.T) {
 			expected: "",
 		},
 	}
-	
+
 	for i, test := range tests {
 		t.Run(fmt.Sprintf("test %d", i), func(t *testing.T) {
 			result := extractMessage(test.input)
